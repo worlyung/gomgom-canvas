@@ -34,7 +34,8 @@ export function MaskEditor({ image, screenRect, mode, onApply, onCancel }: Props
 
   if (!natural) return null;
 
-  const brushR = mode === "brush" ? natural.w / 24 : natural.w / 10;
+  // 포인트 반지름은 1단계 실증값(1024px 기준 50px = 폭/20) — 이 크기로도 모델이 사물 전체를 인식함
+  const brushR = mode === "brush" ? natural.w / 24 : natural.w / 20;
 
   const toCanvasXY = (e: React.PointerEvent) => {
     const rect = canvasRef.current!.getBoundingClientRect();
