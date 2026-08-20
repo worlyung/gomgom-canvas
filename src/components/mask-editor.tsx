@@ -9,8 +9,8 @@ import { Button } from "@/components/ui/button";
 interface Props {
   image: PlacedImage;
   screenRect: { x: number; y: number; w: number; h: number };
-  mode: "brush" | "point";
-  onApply: (maskDataUrl: string) => void;
+  mode: "brush" | "point" | "text"; // text = 글자 위를 칠하고 새 문구 입력
+  onApply: (maskDataUrl: string, text?: string) => void;
   onCancel: () => void;
 }
 
@@ -18,6 +18,7 @@ export function MaskEditor({ image, screenRect, mode, onApply, onCancel }: Props
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   const [hasDrawing, setHasDrawing] = useState(false);
+  const [newText, setNewText] = useState("");
   const drawing = useRef(false);
 
   useEffect(() => {
@@ -35,7 +36,7 @@ export function MaskEditor({ image, screenRect, mode, onApply, onCancel }: Props
   if (!natural) return null;
 
   // 포인트 반지름은 1단계 실증값(1024px 기준 50px = 폭/20) — 이 크기로도 모델이 사물 전체를 인식함
-  const brushR = mode === "brush" ? natural.w / 24 : natural.w / 20;
+  const brushR = mode === "point" ? natural.w / 20 : natural.w / 24;
 
   const toCanvasXY = (e: React.PointerEvent) => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -92,7 +93,7 @@ export function MaskEditor({ image, screenRect, mode, onApply, onCancel }: Props
           }
         }}
         onPointerMove={(e) => {
-          if (mode === "brush" && drawing.current) {
+          if (mode !== "point" && drawing.current) {
             const p = toCanvasXY(e);
             dot(p.x, p.y);
           }
@@ -105,9 +106,22 @@ export function MaskEditor({ image, screenRect, mode, onApply, onCancel }: Props
         style={{ left: screenRect.x, top: Math.max(8, screenRect.y - 52) }}
       >
         <span className="text-xs text-muted-foreground">
-          {mode === "brush" ? "고칠 부분을 칠하고" : "고칠 것을 콕 찍고"} 적용 —
-          내용은 아래 프롬프트 창
+          {mode === "text"
+            ? "바꿀 글자를 칠하고 새 문구 입력"
+            : mode === "brush"
+              ? "고칠 부분을 칠하고 적용 — 내용은 아래 프롬프트 창"
+              : "고칠 것을 콕 찍고 적용 — 내용은 아래 프롬프트 창"}
         </span>
+        {mode === "text" && (
+          <input
+            value={newText}
+            onChange={(e) => setNewText(e.target.value)}
+            placeholder="새 문구 (예: 10월 23~24일)"
+            className="h-7 w-44 rounded-md border bg-background px-2 text-xs outline-none"
+            style={{ fontSize: "13px" }}
+            autoFocus
+          />
+        )}
         <Button
           size="sm"
           variant="ghost"
@@ -127,8 +141,8 @@ export function MaskEditor({ image, screenRect, mode, onApply, onCancel }: Props
           size="sm"
           variant="primary"
           className="h-7 text-xs"
-          disabled={!hasDrawing}
-          onClick={() => onApply(buildMask())}
+          disabled={!hasDrawing || (mode === "text" && !newText.trim())}
+          onClick={() => onApply(buildMask(), newText.trim() || undefined)}
         >
           적용
         </Button>

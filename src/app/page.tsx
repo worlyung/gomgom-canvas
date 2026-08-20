@@ -24,6 +24,7 @@ import {
   SunIcon,
   MoonIcon,
   ExternalLink,
+  History,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -109,9 +110,13 @@ import { handleRemoveBackground as handleRemoveBackgroundHandler } from "@/lib/h
 import {
   runOpenAIGeneration,
   runMaskEdit,
+  runExpand,
+  runCardnews,
   placeholderSrc as generationPlaceholderSrc,
+  type HistoryEntry,
 } from "@/lib/handlers/openai-handler";
 import { MaskEditor } from "@/components/mask-editor";
+import { HistoryPanel } from "@/components/history-panel";
 import { downloadImagesAsZip } from "@/lib/zip-download";
 import { UsageBadge } from "@/components/usage-badge";
 import {
@@ -149,9 +154,13 @@ export default function OverlayPage() {
   const [imageQuality, setImageQuality] = useState("high");
   const [maskEdit, setMaskEdit] = useState<{
     id: string;
-    mode: "brush" | "point";
+    mode: "brush" | "point" | "text";
     rect: { x: number; y: number; w: number; h: number };
   } | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [cardnewsOpen, setCardnewsOpen] = useState(false);
+  const [cardnewsText, setCardnewsText] = useState("");
+  const [expandKey, setExpandKey] = useState(0);
   const [activeGenerations, setActiveGenerations] = useState<
     Map<string, ActiveGeneration>
   >(new Map());
@@ -1106,79 +1115,7 @@ export default function OverlayPage() {
     activeGenerations.size,
   ]);
 
-  // Load default images only if no saved state
-  useEffect(() => {
-    if (!isStorageLoaded) return;
-    if (images.length > 0) return; // Already have images from storage
-
-    const loadDefaultImages = async () => {
-      const defaultImagePaths = [
-        "/hat.png",
-        "/man.png",
-        "/og-img-compress.png",
-        "/chad.png",
-        "/anime.png",
-        "/cat.jpg",
-        "/overlay.png",
-      ];
-      const loadedImages: PlacedImage[] = [];
-
-      for (let i = 0; i < defaultImagePaths.length; i++) {
-        const path = defaultImagePaths[i];
-        try {
-          const response = await fetch(path);
-          const blob = await response.blob();
-          const reader = new FileReader();
-
-          reader.onload = (e) => {
-            const img = new window.Image();
-            img.crossOrigin = "anonymous"; // Enable CORS
-            img.onload = () => {
-              const id = `default-${path.replace("/", "").replace(".png", "")}-${Date.now()}`;
-              const aspectRatio = img.width / img.height;
-              const maxSize = 200;
-              let width = maxSize;
-              let height = maxSize / aspectRatio;
-
-              if (height > maxSize) {
-                height = maxSize;
-                width = maxSize * aspectRatio;
-              }
-
-              // Position images in a row at center of viewport
-              const spacing = 250;
-              const totalWidth = spacing * (defaultImagePaths.length - 1);
-              const viewportCenterX = canvasSize.width / 2;
-              const viewportCenterY = canvasSize.height / 2;
-              const startX = viewportCenterX - totalWidth / 2;
-              const x = startX + i * spacing - width / 2;
-              const y = viewportCenterY - height / 2;
-
-              setImages((prev) => [
-                ...prev,
-                {
-                  id,
-                  src: e.target?.result as string,
-                  x,
-                  y,
-                  width,
-                  height,
-                  rotation: 0,
-                },
-              ]);
-            };
-            img.src = e.target?.result as string;
-          };
-
-          reader.readAsDataURL(blob);
-        } catch (error) {
-          console.error(`Failed to load default image ${path}:`, error);
-        }
-      }
-    };
-
-    loadDefaultImages();
-  }, [isStorageLoaded, images.length]);
+  // 원본의 데모 이미지 자동 채우기 제거 — 빈 캔버스는 빈 채로 시작한다
 
   // Helper function to resize image if too large
   const resizeImageIfNeeded = async (
@@ -1757,7 +1694,7 @@ export default function OverlayPage() {
   // Users can now manually combine images via the context menu before running generation
 
   // Handle context menu actions
-  const openMaskEdit = (mode: "brush" | "point") => {
+  const openMaskEdit = (mode: "brush" | "point" | "text") => {
     const img = images.find((i) => i.id === selectedIds[0]);
     if (!img) return;
     // 화면 좌표 = 스테이지 컨테이너 위치 + (캔버스좌표 × 배율 + 뷰포트 오프셋)
@@ -3241,7 +3178,26 @@ export default function OverlayPage() {
                   </div>
                   <div className="flex-1" />
                   <div className="flex items-center gap-2">
-                    {/* Clear button */}
+                    {/* 생성 이력 (F-10) */}
+                    <TooltipProvider>
+                      <Tooltip delayDuration={0}>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="secondary"
+                            size="icon-sm"
+                            onClick={() => setHistoryOpen((v) => !v)}
+                            title="생성 이력"
+                          >
+                            <History className="h-3.5 w-3.5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <span>생성 이력</span>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
+                    {/* 캔버스 초기화 */}
                     <TooltipProvider>
                       <Tooltip delayDuration={0}>
                         <TooltipTrigger asChild>
@@ -3251,27 +3207,30 @@ export default function OverlayPage() {
                             onClick={async () => {
                               if (
                                 confirm(
-                                  "Clear all saved data? This cannot be undone.",
+                                  "캔버스를 비울까요? 캔버스 위 이미지와 저장된 상태가 모두 지워집니다. (생성 이력은 남습니다)",
                                 )
                               ) {
                                 await canvasStorage.clearAll();
                                 setImages([]);
+                                setVideos([]);
+                                setSelectedIds([]);
+                                setHistory([]);
+                                setHistoryIndex(-1);
                                 setViewport({ x: 0, y: 0, scale: 1 });
                                 toast({
-                                  title: "Storage cleared",
-                                  description:
-                                    "All saved data has been removed",
+                                  title: "캔버스를 비웠어요",
+                                  description: "저장된 캔버스 상태도 함께 지웠습니다",
                                 });
                               }
                             }}
                             className="bg-destructive/10 text-destructive hover:bg-destructive/20"
-                            title="Clear storage"
+                            title="캔버스 초기화"
                           >
                             <Trash2 className="h-3 w-3" />
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent className="text-destructive">
-                          <span>Clear</span>
+                          <span>캔버스 초기화</span>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
@@ -3422,6 +3381,56 @@ export default function OverlayPage() {
                           onClick={() => openMaskEdit("point")}
                         >
                           📍 포인트수정
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => openMaskEdit("text")}
+                        >
+                          ✏️ 글자수정
+                        </Button>
+                        <Select
+                          key={expandKey}
+                          onValueChange={(target) => {
+                            const img = images.find(
+                              (i) => i.id === selectedIds[0],
+                            );
+                            if (!img) return;
+                            setExpandKey((k) => k + 1);
+                            runExpand({
+                              image: img,
+                              target,
+                              quality: imageQuality,
+                              setImages,
+                              setSelectedIds,
+                              setIsGenerating,
+                              toast,
+                            });
+                          }}
+                        >
+                          <SelectTrigger className="h-7 w-[76px] text-xs">
+                            <SelectValue placeholder="↔ 전개" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1536x1024">
+                              가로로 전개 (현수막·배너)
+                            </SelectItem>
+                            <SelectItem value="1024x1536">
+                              세로로 전개 (스토리·배너)
+                            </SelectItem>
+                            <SelectItem value="1024x1024">
+                              정사각 전개 (SNS 피드)
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => setCardnewsOpen(true)}
+                        >
+                          🗂 카드뉴스
                         </Button>
                       </>
                     )}
@@ -3639,12 +3648,16 @@ export default function OverlayPage() {
                   image={img}
                   screenRect={maskEdit.rect}
                   mode={maskEdit.mode}
-                  onApply={(maskDataUrl) => {
+                  onApply={(maskDataUrl, text) => {
+                    const isText = maskEdit.mode === "text" && text;
                     setMaskEdit(null);
                     runMaskEdit({
                       image: img,
                       maskDataUrl,
-                      prompt: generationSettings.prompt,
+                      prompt: isText
+                        ? `칠한 부분의 글자를 "${text}"로 바꿔줘. 원래 서체·색·크기·배치는 그대로 유지하고, 칠하지 않은 영역은 전혀 건드리지 마.`
+                        : generationSettings.prompt,
+                      historyKind: isText ? "글자수정" : undefined,
                       quality: imageQuality,
                       setImages,
                       setSelectedIds,
@@ -3656,6 +3669,87 @@ export default function OverlayPage() {
                 />
               ) : null;
             })()}
+          {historyOpen && (
+            <HistoryPanel
+              onApplyEntry={(e: HistoryEntry) => {
+                setGenerationSettings((prev) => ({
+                  ...prev,
+                  prompt: e.prompt,
+                  styleId: "custom",
+                }));
+                if (["1024x1024", "1536x1024", "1024x1536"].includes(e.size))
+                  setImageSize(e.size);
+                setImageQuality(e.quality);
+                toast({
+                  title: "조건을 불러왔어요",
+                  description:
+                    e.refs > 0
+                      ? "참조가 있던 생성입니다 — 참조 이미지는 캔버스에서 다시 선택하세요"
+                      : "실행(▶)을 누르면 같은 조건으로 다시 생성됩니다",
+                });
+              }}
+              onClose={() => setHistoryOpen(false)}
+            />
+          )}
+          <Dialog open={cardnewsOpen} onOpenChange={setCardnewsOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>카드뉴스 만들기</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">
+                선택한 이미지를 표지로 삼아 같은 스타일의 내용 페이지를
+                만들어요. 한 줄 = 한 페이지 (최대 6페이지, 순서대로 생성)
+              </p>
+              <Textarea
+                value={cardnewsText}
+                onChange={(e) => setCardnewsText(e.target.value)}
+                placeholder={
+                  "행사 일정: 10월 16~17일 부천중앙공원\n프로그램: 판소리·사물놀이·퓨전국악\n참여 방법: 무료 입장, 예약 불필요"
+                }
+                className="h-32"
+                style={{ fontSize: "14px" }}
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => setCardnewsOpen(false)}
+                >
+                  취소
+                </Button>
+                <Button
+                  variant="primary"
+                  disabled={isGenerating || !cardnewsText.trim()}
+                  onClick={() => {
+                    const cover = images.find((i) => i.id === selectedIds[0]);
+                    const lines = cardnewsText
+                      .split("\n")
+                      .map((l) => l.trim())
+                      .filter(Boolean)
+                      .slice(0, 6);
+                    if (!cover || !lines.length) {
+                      toast({
+                        title: "표지 이미지를 먼저 선택하세요",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    setCardnewsOpen(false);
+                    runCardnews({
+                      cover,
+                      lines,
+                      quality: imageQuality,
+                      setImages,
+                      setSelectedIds,
+                      setIsGenerating,
+                      toast,
+                    });
+                  }}
+                >
+                  페이지 생성 시작
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           {/* Dimension display for selected images */}
           <DimensionDisplay
