@@ -12,6 +12,7 @@ export const imageToCanvasElement = (image: PlacedImage): CanvasElement => ({
   id: image.id,
   type: "image",
   imageId: image.id, // We'll use the same ID for both
+  ...(image.promptHint && { promptHint: image.promptHint }),
   transform: {
     x: image.x,
     y: image.y,

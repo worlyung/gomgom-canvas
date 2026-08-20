@@ -2,6 +2,7 @@ import React from "react";
 import {
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuSub,
   ContextMenuSubTrigger,
   ContextMenuSubContent,
@@ -50,6 +51,7 @@ interface CanvasContextMenuProps {
   handleCombineImages: () => void;
   handleDelete: () => void;
   handleIsolate: () => void;
+  onEditAction?: (action: string) => void; // brush|point|text|expand-<size>|cardnews
   handleConvertToVideo?: (imageId: string) => void;
   handleVideoToVideo?: (videoId: string) => void;
   handleExtendVideo?: (videoId: string) => void;
@@ -77,6 +79,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
   handleCombineImages,
   handleDelete,
   handleIsolate,
+  onEditAction,
   handleConvertToVideo,
   handleVideoToVideo,
   handleExtendVideo,
@@ -118,7 +121,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         className="flex items-center gap-2"
       >
         <Copy className="h-4 w-4" />
-        Duplicate
+        복제
       </ContextMenuItem>
       <ContextMenuItem
         onClick={() => {
@@ -133,9 +136,43 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         className="flex items-center gap-2"
       >
         <Crop className="h-4 w-4" />
-        Crop
+        자르기
       </ContextMenuItem>
       {/* fal 전용 기능(배경제거·영상변환·객체분리)은 gpt-image-2 전환으로 제거됨 */}
+      {onEditAction &&
+        selectedIds.length === 1 &&
+        images.some((img) => img.id === selectedIds[0]) && (
+          <ContextMenuSub>
+            <ContextMenuSubTrigger className="flex items-center gap-2">
+              ✏️ AI 수정
+            </ContextMenuSubTrigger>
+            <ContextMenuSubContent className="w-64">
+              <ContextMenuItem onClick={() => onEditAction("brush")}>
+                🖌 부분수정 — 고칠 부분 칠하기
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => onEditAction("point")}>
+                📍 포인트수정 — 고칠 것 콕 찍기
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => onEditAction("text")}>
+                ✏️ 글자수정 — 글자 칠하고 새 문구
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem onClick={() => onEditAction("expand-1536x1024")}>
+                ↔ 가로로 전개
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => onEditAction("expand-1024x1536")}>
+                ↕ 세로로 전개
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => onEditAction("expand-1024x1024")}>
+                ⬜ 정사각 전개
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem onClick={() => onEditAction("cardnews")}>
+                🗂 카드뉴스 페이지 생성
+              </ContextMenuItem>
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+        )}
       {/* Temporarily disabled Video to Video option
       {selectedIds.length === 1 &&
         handleVideoToVideo &&
@@ -279,7 +316,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         className="flex items-center gap-2"
       >
         <Combine className="h-4 w-4" />
-        Combine Images
+        이미지 합치기
       </ContextMenuItem>
       <ContextMenuSub>
         <ContextMenuSubTrigger
@@ -290,7 +327,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
           className="flex items-center gap-2"
         >
           <Layers className="h-4 w-4" />
-          Layer Order
+          쌓임 순서
         </ContextMenuSubTrigger>
         <ContextMenuSubContent className="w-64" sideOffset={10}>
           <ContextMenuItem
@@ -317,7 +354,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
           >
             <div className="flex items-center gap-2">
               <ChevronUp className="h-4 w-4" />
-              <span>Bring Forward</span>
+              <span>앞으로</span>
             </div>
             <ShortcutBadge variant="alpha" size="xs" shortcut="]" />
           </ContextMenuItem>
@@ -328,7 +365,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
           >
             <div className="flex items-center gap-2">
               <ChevronDown className="h-4 w-4" />
-              <span>Send Backward</span>
+              <span>뒤로</span>
             </div>
             <ShortcutBadge variant="alpha" size="xs" shortcut="[" />
           </ContextMenuItem>
@@ -339,7 +376,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
           >
             <div className="flex items-center gap-2">
               <MoveDown className="h-4 w-4" />
-              <span>Send to Back</span>
+              <span>맨 뒤로</span>
             </div>
             <ShortcutBadge
               variant="alpha"
@@ -378,7 +415,8 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
 
             if (image) {
               const link = document.createElement("a");
-              link.download = `image-${Date.now()}.png`;
+              const hint = image.promptHint || "이미지";
+              link.download = `${hint}_${new Date().toISOString().slice(0, 10)}.png`;
               link.href = image.src;
               link.click();
             } else if (video) {
@@ -411,7 +449,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         className="flex items-center gap-2"
       >
         <Download className="h-4 w-4" />
-        Download
+        다운로드
       </ContextMenuItem>
       <ContextMenuItem
         onClick={handleDelete}
@@ -419,7 +457,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         className="flex items-center gap-2 text-destructive"
       >
         <X className="h-4 w-4" />
-        Delete
+        삭제
       </ContextMenuItem>
     </ContextMenuContent>
   );

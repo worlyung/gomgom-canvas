@@ -117,6 +117,14 @@ import {
 } from "@/lib/handlers/openai-handler";
 import { MaskEditor } from "@/components/mask-editor";
 import { HistoryPanel } from "@/components/history-panel";
+import { GeneratingIndicator } from "@/components/generating-indicator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { downloadImagesAsZip } from "@/lib/zip-download";
 import { UsageBadge } from "@/components/usage-badge";
 import {
@@ -886,6 +894,7 @@ export default function OverlayPage() {
             loadedImages.push({
               id: element.id,
               src: imageData.originalDataUrl,
+              ...(element.promptHint && { promptHint: element.promptHint }),
               x: element.transform.x,
               y: element.transform.y,
               width: element.width || 300,
@@ -1697,19 +1706,34 @@ export default function OverlayPage() {
   const openMaskEdit = (mode: "brush" | "point" | "text") => {
     const img = images.find((i) => i.id === selectedIds[0]);
     if (!img) return;
-    // 화면 좌표 = 스테이지 컨테이너 위치 + (캔버스좌표 × 배율 + 뷰포트 오프셋)
-    const base = document
-      .querySelector(".konvajs-content")
-      ?.getBoundingClientRect() ?? { left: 0, top: 0 };
+    // 캔버스 축소 상태와 무관하게 화면 중앙에 크게 띄운다 (칠하기 편하게)
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const aspect = img.width / img.height;
+    let h = Math.min(vh * 0.62, 680);
+    let w = h * aspect;
+    if (w > vw * 0.82) {
+      w = vw * 0.82;
+      h = w / aspect;
+    }
     setMaskEdit({
       id: img.id,
       mode,
-      rect: {
-        x: base.left + img.x * viewport.scale + viewport.x,
-        y: base.top + img.y * viewport.scale + viewport.y,
-        w: img.width * viewport.scale,
-        h: img.height * viewport.scale,
-      },
+      rect: { x: (vw - w) / 2, y: (vh - h) / 2 - 20, w, h },
+    });
+  };
+
+  const runExpandFor = (target: string) => {
+    const img = images.find((i) => i.id === selectedIds[0]);
+    if (!img) return;
+    runExpand({
+      image: img,
+      target,
+      quality: imageQuality,
+      setImages,
+      setSelectedIds,
+      setIsGenerating,
+      toast,
     });
   };
 
@@ -3023,6 +3047,12 @@ export default function OverlayPage() {
               setCroppingImageId={setCroppingImageId}
               setIsolateInputValue={setIsolateInputValue}
               setIsolateTarget={setIsolateTarget}
+              onEditAction={(action) => {
+                if (action === "cardnews") setCardnewsOpen(true);
+                else if (action.startsWith("expand-"))
+                  runExpandFor(action.slice(7));
+                else openMaskEdit(action as "brush" | "point" | "text");
+              }}
               sendToFront={sendToFront}
               sendToBack={sendToBack}
               bringForward={bringForward}
@@ -3130,7 +3160,7 @@ export default function OverlayPage() {
                         onClick={undo}
                         disabled={historyIndex <= 0}
                         className="rounded-none"
-                        title="Undo"
+                        title="실행취소"
                       >
                         <Undo className="h-4 w-4" />
                       </Button>
@@ -3141,7 +3171,7 @@ export default function OverlayPage() {
                         onClick={redo}
                         disabled={historyIndex >= history.length - 1}
                         className="rounded-none"
-                        title="Redo"
+                        title="다시실행"
                       >
                         <Redo className="h-4 w-4" strokeWidth={2} />
                       </Button>
@@ -3161,7 +3191,7 @@ export default function OverlayPage() {
                         <div className="flex items-center gap-2 text-xs font-medium">
                           <ImageIcon className="w-4 h-4 text-blue-600 dark:text-blue-500" />
                           <span className="text-blue-600 dark:text-blue-500">
-                            Image to Image
+                            참조 생성 ({selectedIds.length}장)
                           </span>
                         </div>
                       ) : (
@@ -3170,7 +3200,7 @@ export default function OverlayPage() {
                             T
                           </span>
                           <span className="text-orange-600 dark:text-orange-500">
-                            Text to Image
+                            새로 생성
                           </span>
                         </div>
                       )}
@@ -3252,7 +3282,7 @@ export default function OverlayPage() {
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>
-                          <span>Settings</span>
+                          <span>설정</span>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
@@ -3268,7 +3298,7 @@ export default function OverlayPage() {
                         prompt: e.target.value,
                       })
                     }
-                    placeholder={`Enter a prompt... (${checkOS("Win") || checkOS("Linux") ? "Ctrl" : "⌘"}+Enter to run)`}
+                    placeholder={`프롬프트를 입력하세요… (${checkOS("Win") || checkOS("Linux") ? "Ctrl" : "⌘"}+Enter 실행)`}
                     className="w-full h-20 resize-none border-none p-2 pr-36"
                     style={{ fontSize: "16px" }}
                     onKeyDown={(e) => {
@@ -3366,72 +3396,56 @@ export default function OverlayPage() {
                   {selectedIds.length === 1 &&
                     images.some((i) => i.id === selectedIds[0]) && (
                       <>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => openMaskEdit("brush")}
-                        >
-                          🖌 부분수정
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => openMaskEdit("point")}
-                        >
-                          📍 포인트수정
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => openMaskEdit("text")}
-                        >
-                          ✏️ 글자수정
-                        </Button>
-                        <Select
-                          key={expandKey}
-                          onValueChange={(target) => {
-                            const img = images.find(
-                              (i) => i.id === selectedIds[0],
-                            );
-                            if (!img) return;
-                            setExpandKey((k) => k + 1);
-                            runExpand({
-                              image: img,
-                              target,
-                              quality: imageQuality,
-                              setImages,
-                              setSelectedIds,
-                              setIsGenerating,
-                              toast,
-                            });
-                          }}
-                        >
-                          <SelectTrigger className="h-7 w-[76px] text-xs">
-                            <SelectValue placeholder="↔ 전개" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="1536x1024">
-                              가로로 전개 (현수막·배너)
-                            </SelectItem>
-                            <SelectItem value="1024x1536">
-                              세로로 전개 (스토리·배너)
-                            </SelectItem>
-                            <SelectItem value="1024x1024">
-                              정사각 전개 (SNS 피드)
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => setCardnewsOpen(true)}
-                        >
-                          🗂 카드뉴스
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs"
+                            >
+                              ✏️ 수정 ▾
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            <DropdownMenuItem
+                              onClick={() => openMaskEdit("brush")}
+                            >
+                              🖌 부분수정 — 고칠 부분 칠하기
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => openMaskEdit("point")}
+                            >
+                              📍 포인트수정 — 고칠 것 콕 찍기
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => openMaskEdit("text")}
+                            >
+                              ✏️ 글자수정 — 글자 칠하고 새 문구
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => runExpandFor("1536x1024")}
+                            >
+                              ↔ 가로로 전개 (현수막·배너)
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => runExpandFor("1024x1536")}
+                            >
+                              ↕ 세로로 전개 (스토리·배너)
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => runExpandFor("1024x1024")}
+                            >
+                              ⬜ 정사각 전개 (SNS 피드)
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => setCardnewsOpen(true)}
+                            >
+                              🗂 카드뉴스 — 표지 스타일로 페이지 생성
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </>
                     )}
                 </div>
@@ -3559,13 +3573,13 @@ export default function OverlayPage() {
                                 }
                               }, 30000); // 30 second cleanup
                             }}
-                            title="Upload images"
+                            title="이미지·제안서 업로드"
                           >
                             <Paperclip className="h-4 w-4" />
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>
-                          <span>Upload</span>
+                          <span>업로드 (이미지·md·PDF)</span>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
@@ -3595,7 +3609,7 @@ export default function OverlayPage() {
                         </TooltipTrigger>
                         <TooltipContent>
                           <div className="flex items-center gap-2">
-                            <span>Run</span>
+                            <span>실행</span>
                             <ShortcutBadge
                               variant="default"
                               size="xs"
@@ -3640,6 +3654,23 @@ export default function OverlayPage() {
           />
 
           <UsageBadge />
+          <GeneratingIndicator active={isGenerating} />
+          {isStorageLoaded &&
+            images.length === 0 &&
+            videos.length === 0 &&
+            !isGenerating && (
+              <div className="pointer-events-none fixed inset-0 z-0 flex items-center justify-center">
+                <div className="text-center text-muted-foreground/60 select-none">
+                  <p className="text-lg font-medium">
+                    제안서(md·PDF)나 이미지를 여기에 끌어다 놓으세요
+                  </p>
+                  <p className="mt-1 text-sm">
+                    또는 아래 입력창에 프롬프트를 쓰고 실행(▶)을 누르면 이미지가
+                    생성됩니다
+                  </p>
+                </div>
+              </div>
+            )}
           {maskEdit &&
             (() => {
               const img = images.find((i) => i.id === maskEdit.id);
@@ -3854,7 +3885,7 @@ export default function OverlayPage() {
       >
         <DialogContent className="w-[95vw] max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Settings</DialogTitle>
+            <DialogTitle>설정</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-6">
@@ -3862,9 +3893,9 @@ export default function OverlayPage() {
             {/* Appearance */}
             <div className="flex justify-between">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="appearance">Appearance</Label>
+                <Label htmlFor="appearance">화면 모드</Label>
                 <p className="text-sm text-muted-foreground">
-                  Customize how infinite-kanvas looks on your device.
+                  밝은/어두운 화면을 고릅니다.
                 </p>
               </div>
               <Select
@@ -3911,9 +3942,9 @@ export default function OverlayPage() {
             {/* Grid */}
             <div className="flex justify-between">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="grid">Show Grid</Label>
+                <Label htmlFor="grid">격자 표시</Label>
                 <p className="text-sm text-muted-foreground">
-                  Show a grid on the canvas to help you align your images.
+                  이미지 정렬에 도움되는 격자를 캔버스에 표시합니다.
                 </p>
               </div>
               <Switch
@@ -3926,9 +3957,9 @@ export default function OverlayPage() {
             {/* Minimap */}
             <div className="flex justify-between">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="minimap">Show Minimap</Label>
+                <Label htmlFor="minimap">미니맵 표시</Label>
                 <p className="text-sm text-muted-foreground">
-                  Show a minimap in the corner to navigate the canvas.
+                  구석에 미니맵을 띄워 캔버스를 한눈에 봅니다.
                 </p>
               </div>
               <Switch

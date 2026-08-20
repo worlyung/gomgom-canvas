@@ -1,5 +1,27 @@
 // gpt-image-2 생성 흐름 (fal 대체): 선택 이미지 = 참조(F-04, 최대 16장) → /api/generate → 캔버스 배치
+import React from "react";
 import type { PlacedImage } from "@/types/canvas";
+import { ToastAction, type ToastActionElement } from "@/components/ui/toast";
+
+// 프롬프트 앞부분으로 파일명용 요약 만들기 (예: "가을-밤-국악과-만나다")
+export function slugFromPrompt(prompt: string): string {
+  const words = prompt
+    .replace(/[^\w가-힣a-zA-Z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 4)
+    .join("-");
+  return words.slice(0, 24) || "이미지";
+}
+
+// 실패 토스트의 "다시 시도" 버튼
+function retryAction(fn: () => void): ToastActionElement {
+  return React.createElement(
+    ToastAction,
+    { altText: "다시 시도", onClick: fn },
+    "다시 시도",
+  ) as unknown as ToastActionElement;
+}
 
 interface RunDeps {
   images: PlacedImage[];
@@ -16,6 +38,7 @@ interface RunDeps {
     title: string;
     description?: string;
     variant?: "default" | "destructive";
+    action?: ToastActionElement;
   }) => void;
 }
 
@@ -165,7 +188,11 @@ export async function runExpand(deps: {
     if (!j.images?.length) throw new Error("결과 이미지가 없습니다");
 
     setImages((prev) =>
-      prev.map((img) => (img.id === placeholderId ? { ...img, src: j.images[0] } : img)),
+      prev.map((img) =>
+        img.id === placeholderId
+          ? { ...img, src: j.images[0], promptHint: `${image.promptHint || "이미지"}-전개` }
+          : img,
+      ),
     );
     setSelectedIds([placeholderId]);
     recordHistory({ kind: "사이즈 전개", prompt: `→ ${target}`, size: target, quality, refs: 1 });
@@ -176,6 +203,7 @@ export async function runExpand(deps: {
       title: "사이즈 전개 실패",
       description: error instanceof Error ? error.message : "알 수 없는 오류",
       variant: "destructive",
+      action: retryAction(() => runExpand(deps)),
     });
   } finally {
     setIsGenerating(false);
@@ -230,7 +258,11 @@ export async function runCardnews(deps: {
         const j = await resp.json();
         if (!resp.ok || !j.images?.length) throw new Error(j.error || "생성 실패");
         setImages((prev) =>
-          prev.map((img) => (img.id === ids[i] ? { ...img, src: j.images[0] } : img)),
+          prev.map((img) =>
+            img.id === ids[i]
+              ? { ...img, src: j.images[0], promptHint: slugFromPrompt(lines[i]) }
+              : img,
+          ),
         );
         ok++;
         window.dispatchEvent(new Event("usage-updated"));
@@ -331,7 +363,9 @@ export async function runMaskEdit(deps: {
 
     setImages((prev) =>
       prev.map((img) =>
-        img.id === placeholderId ? { ...img, src: j.images[0] } : img,
+        img.id === placeholderId
+          ? { ...img, src: j.images[0], promptHint: slugFromPrompt(prompt) }
+          : img,
       ),
     );
     setSelectedIds([placeholderId]);
@@ -349,6 +383,7 @@ export async function runMaskEdit(deps: {
       title: "부분 수정 실패",
       description: error instanceof Error ? error.message : "알 수 없는 오류",
       variant: "destructive",
+      action: retryAction(() => runMaskEdit(deps)),
     });
   } finally {
     setIsGenerating(false);
@@ -428,7 +463,9 @@ export async function runOpenAIGeneration(deps: RunDeps) {
 
     setImages((prev) =>
       prev.map((img) =>
-        img.id === placeholderId ? { ...img, src: j.images[0] } : img,
+        img.id === placeholderId
+          ? { ...img, src: j.images[0], promptHint: slugFromPrompt(prompt) }
+          : img,
       ),
     );
     setSelectedIds([placeholderId]);
@@ -440,6 +477,7 @@ export async function runOpenAIGeneration(deps: RunDeps) {
       title: "생성 실패",
       description: error instanceof Error ? error.message : "알 수 없는 오류",
       variant: "destructive",
+      action: retryAction(() => runOpenAIGeneration(deps)),
     });
   } finally {
     setIsGenerating(false);

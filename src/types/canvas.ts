@@ -8,6 +8,7 @@ export interface PlacedImage {
   rotation: number;
   isGenerated?: boolean;
   parentGroupId?: string;
+  promptHint?: string; // 생성 프롬프트 요약 — 다운로드 파일명용
   cropX?: number;
   cropY?: number;
   cropWidth?: number;

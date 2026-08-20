@@ -26,6 +26,7 @@ interface CanvasElement {
   imageId?: string; // Reference to IndexedDB image
   videoId?: string; // Reference to IndexedDB video
   transform: ImageTransform;
+  promptHint?: string;
   zIndex: number;
   width?: number;
   height?: number;
