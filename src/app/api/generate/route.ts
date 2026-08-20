@@ -39,12 +39,14 @@ export async function POST(req: NextRequest) {
   const n: number = Math.min(Math.max(Number(body.n) || 1, 1), 4);
   const refs: string[] = Array.isArray(body.refs) ? body.refs.slice(0, 16) : [];
   const mask: string | undefined = body.mask; // 알파=0 영역만 수정 (F-07)
+  const transparent = !!body.transparent; // 투명 배경 PNG
 
   if (!prompt?.trim()) {
     return NextResponse.json({ error: "프롬프트가 비었습니다" }, { status: 400 });
   }
 
-  const model = "gpt-image-2";
+  // 투명 배경은 gpt-image-2 미지원(400) → 지원되는 gpt-image-1로 자동 전환
+  const model = transparent ? "gpt-image-1" : "gpt-image-2";
   let resp: Response;
   if (refs.length > 0) {
     const form = new FormData();
@@ -53,6 +55,7 @@ export async function POST(req: NextRequest) {
     form.set("size", size);
     form.set("quality", quality);
     form.set("n", String(n));
+    if (transparent) form.set("background", "transparent");
     for (let i = 0; i < refs.length; i++) {
       const blob = await (await fetch(refs[i])).blob();
       form.append("image[]", blob, `ref-${i}.png`);
@@ -72,7 +75,14 @@ export async function POST(req: NextRequest) {
         Authorization: `Bearer ${key}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ model, prompt, size, quality, n }),
+      body: JSON.stringify({
+        model,
+        prompt,
+        size,
+        quality,
+        n,
+        ...(transparent && { background: "transparent" }),
+      }),
     });
   }
 

@@ -160,6 +160,7 @@ export default function OverlayPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [imageSize, setImageSize] = useState("1024x1024");
   const [imageQuality, setImageQuality] = useState("high");
+  const [transparentBg, setTransparentBg] = useState(false);
   const [maskEdit, setMaskEdit] = useState<{
     id: string;
     mode: "brush" | "point" | "text";
@@ -1745,6 +1746,7 @@ export default function OverlayPage() {
       prompt: generationSettings.prompt,
       size: imageSize,
       quality: imageQuality,
+      transparent: transparentBg,
       canvasSize,
       viewport,
       setImages,
@@ -3379,6 +3381,19 @@ export default function OverlayPage() {
                       <SelectItem value="low">저품질</SelectItem>
                     </SelectContent>
                   </Select>
+                  <Button
+                    variant={transparentBg ? "secondary" : "ghost"}
+                    size="sm"
+                    className={cn(
+                      "h-7 text-xs",
+                      transparentBg &&
+                        "ring-1 ring-blue-400/60 text-blue-600 dark:text-blue-400",
+                    )}
+                    onClick={() => setTransparentBg((v) => !v)}
+                    title="배경 없이 요소만 그린 PNG로 생성 (로고·캐릭터·오려 쓸 요소용). 이 모드는 투명을 지원하는 gpt-image-1로 생성됩니다"
+                  >
+                    {transparentBg ? "☑ 투명 배경" : "☐ 투명 배경"}
+                  </Button>
                   {selectedIds.length > 0 && (
                     <Button
                       variant="ghost"

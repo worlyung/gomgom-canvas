@@ -29,6 +29,7 @@ interface RunDeps {
   prompt: string;
   size: string;
   quality: string;
+  transparent?: boolean; // 투명 배경 PNG
   canvasSize: { width: number; height: number };
   viewport: { x: number; y: number; scale: number };
   setImages: React.Dispatch<React.SetStateAction<PlacedImage[]>>;
@@ -397,6 +398,7 @@ export async function runOpenAIGeneration(deps: RunDeps) {
     prompt,
     size,
     quality,
+    transparent,
     canvasSize,
     viewport,
     setImages,
@@ -455,7 +457,13 @@ export async function runOpenAIGeneration(deps: RunDeps) {
     const resp = await fetch("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, size, quality, refs }),
+      body: JSON.stringify({
+        prompt,
+        size,
+        quality,
+        refs,
+        ...(transparent && { transparent: true }),
+      }),
     });
     const j = await resp.json();
     if (!resp.ok) throw new Error(j.error || `HTTP ${resp.status}`);
