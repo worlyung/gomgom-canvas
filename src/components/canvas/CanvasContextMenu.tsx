@@ -135,30 +135,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         <Crop className="h-4 w-4" />
         Crop
       </ContextMenuItem>
-      <ContextMenuItem
-        onClick={handleRemoveBackground}
-        disabled={
-          selectedIds.length === 0 ||
-          videos?.some((v) => selectedIds.includes(v.id))
-        }
-        className="flex items-center gap-2"
-      >
-        <Scissors className="h-4 w-4" />
-        Remove Background
-      </ContextMenuItem>
-      {selectedIds.length === 1 &&
-        handleConvertToVideo &&
-        images.some((img) => img.id === selectedIds[0]) && (
-          <ContextMenuItem
-            onClick={() => {
-              handleConvertToVideo(selectedIds[0]);
-            }}
-            className="flex items-center gap-2"
-          >
-            <Video className="h-4 w-4" />
-            Image to Video
-          </ContextMenuItem>
-        )}
+      {/* fal 전용 기능(배경제거·영상변환·객체분리)은 gpt-image-2 전환으로 제거됨 */}
       {/* Temporarily disabled Video to Video option
       {selectedIds.length === 1 &&
         handleVideoToVideo &&
@@ -199,6 +176,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
             Remove Video Background
           </ContextMenuItem>
         )}
+      {false && (
       <ContextMenuSub>
         <ContextMenuSubTrigger
           disabled={
@@ -294,6 +272,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
           </div>
         </ContextMenuSubContent>
       </ContextMenuSub>
+      )}
       <ContextMenuItem
         onClick={handleCombineImages}
         disabled={selectedIds.length < 2}

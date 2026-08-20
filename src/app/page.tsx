@@ -107,6 +107,14 @@ import {
 } from "@/lib/handlers/generation-handler";
 import { handleRemoveBackground as handleRemoveBackgroundHandler } from "@/lib/handlers/background-handler";
 import {
+  runOpenAIGeneration,
+  runMaskEdit,
+  placeholderSrc as generationPlaceholderSrc,
+} from "@/lib/handlers/openai-handler";
+import { MaskEditor } from "@/components/mask-editor";
+import { downloadImagesAsZip } from "@/lib/zip-download";
+import { UsageBadge } from "@/components/usage-badge";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -126,19 +134,24 @@ export default function OverlayPage() {
   const [visibleIndicators, setVisibleIndicators] = useState<Set<string>>(
     new Set(),
   );
-  const simpsonsStyle = styleModels.find((m) => m.id === "simpsons");
   const { toast } = useToast();
 
+  // 기본값 = 스타일 없음·빈 프롬프트 (원본의 심슨 기본값 제거)
   const [generationSettings, setGenerationSettings] =
     useState<GenerationSettings>({
-      prompt: simpsonsStyle?.prompt || "",
-      loraUrl: simpsonsStyle?.loraUrl || "",
-      styleId: simpsonsStyle?.id || "simpsons",
+      prompt: "",
+      loraUrl: "",
+      styleId: "custom",
     });
-  const [previousStyleId, setPreviousStyleId] = useState<string>(
-    simpsonsStyle?.id || "simpsons",
-  );
+  const [previousStyleId, setPreviousStyleId] = useState<string>("custom");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [imageSize, setImageSize] = useState("1024x1024");
+  const [imageQuality, setImageQuality] = useState("high");
+  const [maskEdit, setMaskEdit] = useState<{
+    id: string;
+    mode: "brush" | "point";
+    rect: { x: number; y: number; w: number; h: number };
+  } | null>(null);
   const [activeGenerations, setActiveGenerations] = useState<
     Map<string, ActiveGeneration>
   >(new Map());
@@ -808,6 +821,9 @@ export default function OverlayPage() {
           image.src.startsWith("data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP")
         )
           continue;
+        // gpt-image 생성 중 자리표시자도 저장 금지 — 같은 id로 먼저 저장되면
+        // 완성본이 "이미 있음"으로 건너뛰어져 영구히 placeholder만 남는다
+        if (image.src === generationPlaceholderSrc) continue;
 
         // Check if we already have this image stored
         const existingImage = await canvasStorage.getImage(image.id);
@@ -1288,6 +1304,39 @@ export default function OverlayPage() {
     if (!files) return;
 
     Array.from(files).forEach((file, index) => {
+      // 문서(제안서 md/txt/pdf) → 포스터 프롬프트 자동 채우기
+      if (/\.(md|txt|pdf)$/i.test(file.name)) {
+        (async () => {
+          toast({ title: "문서를 읽는 중…", description: file.name });
+          try {
+            const fd = new FormData();
+            fd.set("file", file);
+            const resp = await fetch("/api/understand-doc", {
+              method: "POST",
+              body: fd,
+            });
+            const j = await resp.json();
+            if (!resp.ok) throw new Error(j.error || `HTTP ${resp.status}`);
+            setGenerationSettings((prev) => ({
+              ...prev,
+              prompt: j.prompt,
+              styleId: "custom",
+            }));
+            setImageSize("1024x1536"); // 포스터 기본 = 세로
+            toast({
+              title: "제안서를 읽었어요 — 프롬프트를 채워뒀습니다",
+              description: "내용 확인 후 실행(▶)을 누르면 포스터가 생성됩니다",
+            });
+          } catch (err) {
+            toast({
+              title: "문서 이해 실패",
+              description: err instanceof Error ? err.message : "알 수 없는 오류",
+              variant: "destructive",
+            });
+          }
+        })();
+        return;
+      }
       if (file.type.startsWith("image/")) {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -1708,22 +1757,39 @@ export default function OverlayPage() {
   // Users can now manually combine images via the context menu before running generation
 
   // Handle context menu actions
+  const openMaskEdit = (mode: "brush" | "point") => {
+    const img = images.find((i) => i.id === selectedIds[0]);
+    if (!img) return;
+    // 화면 좌표 = 스테이지 컨테이너 위치 + (캔버스좌표 × 배율 + 뷰포트 오프셋)
+    const base = document
+      .querySelector(".konvajs-content")
+      ?.getBoundingClientRect() ?? { left: 0, top: 0 };
+    setMaskEdit({
+      id: img.id,
+      mode,
+      rect: {
+        x: base.left + img.x * viewport.scale + viewport.x,
+        y: base.top + img.y * viewport.scale + viewport.y,
+        w: img.width * viewport.scale,
+        h: img.height * viewport.scale,
+      },
+    });
+  };
+
   const handleRun = async () => {
-    await handleRunHandler({
+    // fal 파이프라인 대신 gpt-image-2 중계 서버 사용 (선택 이미지 = 참조, F-04)
+    await runOpenAIGeneration({
       images,
       selectedIds,
-      generationSettings,
-      customApiKey,
+      prompt: generationSettings.prompt,
+      size: imageSize,
+      quality: imageQuality,
       canvasSize,
       viewport,
-      falClient,
       setImages,
       setSelectedIds,
-      setActiveGenerations,
       setIsGenerating,
-      setIsApiKeyDialogOpen,
       toast,
-      generateTextToImage,
     });
   };
 
@@ -3028,17 +3094,6 @@ export default function OverlayPage() {
           </ContextMenu>
 
           <div className="absolute top-4 left-4 z-20 flex flex-col items-start gap-2">
-            {/* Fal logo */}
-            <div className="md:hidden border bg-background/80 py-2 px-3 flex flex-row rounded-xl gap-2 items-center">
-              <Link
-                href="https://fal.ai"
-                target="_blank"
-                className="block transition-opacity"
-              >
-                <Logo className="h-8 w-16 text-foreground" />
-              </Link>
-            </div>
-
             {/* Mobile tool icons - animated based on selection */}
             <MobileToolbar
               selectedIds={selectedIds}
@@ -3314,60 +3369,63 @@ export default function OverlayPage() {
                   )}
                 </div>
 
-                {generationSettings.styleId === "custom" && (
-                  <div className="w-full flex items-center gap-2">
-                    <Input
-                      value={generationSettings.loraUrl}
-                      onChange={(e) =>
-                        setGenerationSettings({
-                          ...generationSettings,
-                          loraUrl: e.target.value,
-                        })
-                      }
-                      placeholder="Kontext LoRA URL (optional)"
-                      style={{ fontSize: "16px" }}
-                    />
+                <div className="flex items-center gap-2 px-1 pb-1">
+                  <Select value={imageSize} onValueChange={setImageSize}>
+                    <SelectTrigger className="h-7 w-[140px] text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1024x1024">정사각 1024</SelectItem>
+                      <SelectItem value="1536x1024">가로 1536×1024</SelectItem>
+                      <SelectItem value="1024x1536">세로 1024×1536</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={imageQuality} onValueChange={setImageQuality}>
+                    <SelectTrigger className="h-7 w-[90px] text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="high">고품질</SelectItem>
+                      <SelectItem value="medium">중간</SelectItem>
+                      <SelectItem value="low">저품질</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {selectedIds.length > 0 && (
                     <Button
                       variant="ghost"
-                      size="icon"
-                      className="flex items-center gap-2"
-                      onClick={() => {
-                        window.open(
-                          "https://huggingface.co/collections/kontext-community/flux-kontext-loras-687e8779f8ed40a611a3925f",
-                          "_blank",
-                        );
-                      }}
-                      title="Browse Kontext LoRAs"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() =>
+                        downloadImagesAsZip(
+                          images.filter((img) => selectedIds.includes(img.id)),
+                        )
+                      }
                     >
-                      <ExternalLink className="h-4 w-4" />
+                      ZIP 다운로드 ({selectedIds.length})
                     </Button>
-                    {generationSettings.styleId === "custom" && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="flex items-center gap-2"
-                        onClick={() => {
-                          // Find the previous style to restore its settings
-                          const prevStyle = styleModels.find(
-                            (model) => model.id === previousStyleId,
-                          );
-
-                          if (prevStyle) {
-                            setGenerationSettings({
-                              ...generationSettings,
-                              styleId: prevStyle.id,
-                              prompt: prevStyle.prompt,
-                              loraUrl: prevStyle.loraUrl || "",
-                            });
-                          }
-                        }}
-                        title="Go back to previous style"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
+                  )}
+                  {selectedIds.length === 1 &&
+                    images.some((i) => i.id === selectedIds[0]) && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => openMaskEdit("brush")}
+                        >
+                          🖌 부분수정
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => openMaskEdit("point")}
+                        >
+                          📍 포인트수정
+                        </Button>
+                      </>
                     )}
-                  </div>
-                )}
+                </div>
 
                 {/* Style dropdown and Run button */}
                 <div className="flex items-center justify-between">
@@ -3420,7 +3478,7 @@ export default function OverlayPage() {
                               // Create file input with better mobile support
                               const input = document.createElement("input");
                               input.type = "file";
-                              input.accept = "image/*";
+                              input.accept = "image/*,.md,.txt,.pdf";
                               input.multiple = true;
 
                               // Add to DOM for mobile compatibility
@@ -3572,8 +3630,32 @@ export default function OverlayPage() {
             canvasSize={canvasSize}
           />
 
-          <PoweredByFalBadge />
-          <GithubBadge />
+          <UsageBadge />
+          {maskEdit &&
+            (() => {
+              const img = images.find((i) => i.id === maskEdit.id);
+              return img ? (
+                <MaskEditor
+                  image={img}
+                  screenRect={maskEdit.rect}
+                  mode={maskEdit.mode}
+                  onApply={(maskDataUrl) => {
+                    setMaskEdit(null);
+                    runMaskEdit({
+                      image: img,
+                      maskDataUrl,
+                      prompt: generationSettings.prompt,
+                      quality: imageQuality,
+                      setImages,
+                      setSelectedIds,
+                      setIsGenerating,
+                      toast,
+                    });
+                  }}
+                  onCancel={() => setMaskEdit(null)}
+                />
+              ) : null;
+            })()}
 
           {/* Dimension display for selected images */}
           <DimensionDisplay
@@ -3682,99 +3764,7 @@ export default function OverlayPage() {
           </DialogHeader>
 
           <div className="space-y-6">
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="api-key">FAL API Key</Label>
-                <p className="text-sm text-muted-foreground">
-                  Add your own FAL API key to bypass rate limits and use your
-                  own quota.
-                </p>
-                <Input
-                  id="api-key"
-                  type="password"
-                  placeholder="Enter your API key"
-                  value={tempApiKey}
-                  onChange={(e) => setTempApiKey(e.target.value)}
-                  className="font-mono"
-                  style={{ fontSize: "16px" }}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Get your API key from{" "}
-                  <Link
-                    href="https://fal.ai/dashboard/keys"
-                    target="_blank"
-                    className="underline hover:text-foreground"
-                  >
-                    fal.ai/dashboard/keys
-                  </Link>
-                </p>
-              </div>
-
-              {customApiKey && (
-                <div className="rounded-xl bg-green-500/10 border border-green-500/20 p-3">
-                  <div className="flex items-center gap-2 text-sm text-green-600">
-                    <Check className="h-4 w-4" />
-                    <span>Currently using custom API key</span>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex justify-between gap-2">
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setCustomApiKey("");
-                    setTempApiKey("");
-                    setIsApiKeyDialogOpen(false);
-                    toast({
-                      title: "API key removed",
-                      description: "Using default rate-limited API",
-                    });
-                  }}
-                  disabled={!customApiKey}
-                >
-                  Remove Key
-                </Button>
-
-                <div className="flex gap-2">
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setTempApiKey(customApiKey);
-                      setIsApiKeyDialogOpen(false);
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="primary"
-                    onClick={() => {
-                      const trimmedKey = tempApiKey.trim();
-                      if (trimmedKey) {
-                        setCustomApiKey(trimmedKey);
-                        setIsApiKeyDialogOpen(false);
-                        toast({
-                          title: "API key saved",
-                          description: "Your custom API key is now active",
-                        });
-                      } else if (trimmedKey) {
-                        toast({
-                          title: "Invalid API key",
-                          description: "FAL API keys should start with 'fal_'",
-                          variant: "destructive",
-                        });
-                      }
-                    }}
-                    disabled={!tempApiKey.trim()}
-                  >
-                    Save Key
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            <div className="h-px bg-border/40" />
-
+            {/* API 키는 중계 서버(.env)에서만 관리 — 화면 입력 없음 (F-05) */}
             {/* Appearance */}
             <div className="flex justify-between">
               <div className="flex flex-col gap-2">

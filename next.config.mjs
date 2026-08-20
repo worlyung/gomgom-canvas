@@ -3,6 +3,8 @@ import { withBotId } from "botid/next/config";
 
 const nextConfig = {
   devIndicators: false,
+  // pdf-parse는 내부 pdf.js 워커를 런타임에 찾으므로 번들 제외
+  serverExternalPackages: ["pdf-parse"],
   webpack: (config) => {
     // Ignore canvas module which is required by Konva in Node environments
     config.resolve.alias.canvas = false;

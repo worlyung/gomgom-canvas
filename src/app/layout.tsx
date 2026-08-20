@@ -7,26 +7,15 @@ import { Analytics } from "@vercel/analytics/next";
 
 export const metadata: Metadata = {
   title: {
-    default: "Flux Kontext Dev - AI Style Transfer | Powered by fal.ai",
-    template: "%s | Flux Kontext Dev",
+    default: "곰곰 캔버스 — AI 디자인 캔버스",
+    template: "%s | 곰곰 캔버스",
   },
   description:
-    "Transform your photos with AI-powered style transfer in seconds. Choose from LoRA models and prompt-based styles including anime, oil painting, cyberpunk, and more. Powered by fal.ai's fast AI infrastructure.",
-  keywords: [
-    "AI style transfer",
-    "image transformation",
-    "flux model",
-    "LoRA",
-    "AI art",
-    "fal.ai",
-    "photo styling",
-    "artificial intelligence",
-    "machine learning",
-    "image generation",
-  ],
-  authors: [{ name: "fal.ai" }],
-  creator: "fal.ai",
-  publisher: "fal.ai",
+    "제안서를 끌어다 놓으면 포스터가 나오는 AI 디자인 캔버스. 생성·참조·부분수정·일괄 다운로드.",
+  keywords: ["AI 이미지 생성", "디자인 캔버스", "gpt-image-2"],
+  authors: [{ name: "곰곰" }],
+  creator: "곰곰",
+  publisher: "곰곰",
   viewport: {
     width: "device-width",
     initialScale: 1,
@@ -46,10 +35,9 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     url: "/",
-    title: "Flux Kontext Dev - AI Style Transfer | Powered by fal.ai",
-    description:
-      "Transform your photos with AI-powered style transfer in seconds. Choose from LoRA models and prompt-based styles.",
-    siteName: "Flux Kontext Dev",
+    title: "곰곰 캔버스 — AI 디자인 캔버스",
+    description: "제안서를 끌어다 놓으면 포스터가 나오는 AI 디자인 캔버스",
+    siteName: "곰곰 캔버스",
     images: [
       {
         url: "/og-img-compress.png",
@@ -62,11 +50,10 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Flux Kontext Dev - AI Style Transfer | Powered by fal.ai",
-    description:
-      "Transform your photos with AI-powered style transfer in seconds. Choose from LoRA models and prompt-based styles.",
-    creator: "@fal_ai",
-    site: "@fal_ai",
+    title: "곰곰 캔버스 — AI 디자인 캔버스",
+    description: "제안서를 끌어다 놓으면 포스터가 나오는 AI 디자인 캔버스",
+    creator: "@gomgom",
+    site: "@gomgom",
     images: [
       {
         url: "/og-img-compress.png",
