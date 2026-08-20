@@ -7,6 +7,11 @@ fal.ai 의존을 걷어내고 OpenAI Images API 직결로 재구성했다. 한�
 
 > An infinite-canvas image editor rebuilt on OpenAI gpt-image-2 — drop a proposal document (md/txt/PDF), get a poster. Forked from infinite-kanvas (MIT).
 
+<p align="center">
+  <img src="docs/images/doc-to-poster.jpg" alt="가상 제안서(md)를 캔버스에 드롭하고 실행 한 번으로 생성된 행사 포스터" width="380">
+</p>
+<p align="center"><i>↑ 가상 제안서 md를 캔버스에 끌어다 놓고 실행 버튼 한 번 — 행사명·일시·장소·분위기가 문서에서 자동 반영된다</i></p>
+
 ## 주요 기능
 
 | 기능 | 설명 |
@@ -21,6 +26,20 @@ fal.ai 의존을 걷어내고 OpenAI Images API 직결로 재구성했다. 한�
 | 🔒 **키 보호** | API 키는 중계 서버만 보관 — 브라우저·개발자도구 어디에도 노출 안 됨 |
 
 무한 캔버스(팬·줌·다중선택·실행취소·IndexedDB 자동저장)는 베이스 그대로.
+
+## 실물 예시
+
+**📍 포인트 수정** — 노란 우산을 콕 한 번 찍고 "빨간 우산으로" → 우산만 바뀌고 나머지는 그대로
+
+![포인트 수정 전후 비교](docs/images/point-edit.jpg)
+
+**🔗 참조 생성** — 왼쪽 그림을 선택(참조)하고 "배경만 바닷가로" → 인물·화풍 유지, 배경만 교체
+
+![참조 생성 전후 비교](docs/images/reference-gen.jpg)
+
+**🗂 카드뉴스 모드** — 표지 1장 + 문구 두 줄 입력 → 같은 디자인 시스템의 내용 페이지 자동 생성
+
+![카드뉴스 3장 — 표지와 같은 디자인의 내용 페이지](docs/images/cardnews.jpg)
 
 ## 실행
 
