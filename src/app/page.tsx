@@ -112,6 +112,7 @@ import {
   runMaskEdit,
   runExpand,
   runCardnews,
+  runRemoveBackground,
   placeholderSrc as generationPlaceholderSrc,
   type HistoryEntry,
 } from "@/lib/handlers/openai-handler";
@@ -1724,6 +1725,19 @@ export default function OverlayPage() {
     });
   };
 
+  const removeBgForSelected = () => {
+    const img = images.find((i) => i.id === selectedIds[0]);
+    if (!img) return;
+    runRemoveBackground({
+      image: img,
+      quality: imageQuality,
+      setImages,
+      setSelectedIds,
+      setIsGenerating,
+      toast,
+    });
+  };
+
   const runExpandFor = (target: string) => {
     const img = images.find((i) => i.id === selectedIds[0]);
     if (!img) return;
@@ -3051,6 +3065,7 @@ export default function OverlayPage() {
               setIsolateTarget={setIsolateTarget}
               onEditAction={(action) => {
                 if (action === "cardnews") setCardnewsOpen(true);
+                else if (action === "removebg") removeBgForSelected();
                 else if (action.startsWith("expand-"))
                   runExpandFor(action.slice(7));
                 else openMaskEdit(action as "brush" | "point" | "text");
@@ -3469,6 +3484,10 @@ export default function OverlayPage() {
                               onClick={() => openMaskEdit("text")}
                             >
                               ✏️ 글자수정 — 글자 칠하고 새 문구
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={removeBgForSelected}>
+                              🫥 배경 제거 — 피사체만 투명 PNG로
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem

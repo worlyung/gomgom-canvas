@@ -211,6 +211,91 @@ export async function runExpand(deps: {
   }
 }
 
+// 배경 제거: 이미 만든 이미지에서 피사체만 남긴 투명 PNG (transparent=true → gpt-image-1)
+export async function runRemoveBackground(deps: {
+  image: PlacedImage;
+  quality: string;
+  setImages: React.Dispatch<React.SetStateAction<PlacedImage[]>>;
+  setSelectedIds: React.Dispatch<React.SetStateAction<string[]>>;
+  setIsGenerating: React.Dispatch<React.SetStateAction<boolean>>;
+  toast: RunDeps["toast"];
+}) {
+  const { image, quality, setImages, setSelectedIds, setIsGenerating, toast } =
+    deps;
+
+  const placeholderId = `generated-${Date.now()}`;
+  setImages((prev) => [
+    ...prev,
+    {
+      id: placeholderId,
+      src: placeholderSrc,
+      x: image.x + image.width + 20,
+      y: image.y,
+      width: image.width,
+      height: image.height,
+      rotation: 0,
+      isGenerated: true,
+    },
+  ]);
+
+  setIsGenerating(true);
+  try {
+    const ref = await exportImageAsDataUrl(image);
+    const probe = new window.Image();
+    probe.src = ref;
+    await new Promise((r) => (probe.onload = r));
+    const size = pickSize(probe.naturalWidth, probe.naturalHeight);
+
+    const prompt =
+      "배경을 완전히 제거하고 주요 피사체만 남겨줘. 투명 배경. 피사체의 모양·색·질감·디테일은 원본 그대로 유지하고, 그림자나 배경 조각을 남기지 마.";
+    const resp = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt,
+        size,
+        quality,
+        refs: [ref],
+        transparent: true,
+      }),
+    });
+    const j = await resp.json();
+    if (!resp.ok) throw new Error(j.error || `HTTP ${resp.status}`);
+    if (!j.images?.length) throw new Error("결과 이미지가 없습니다");
+
+    setImages((prev) =>
+      prev.map((img) =>
+        img.id === placeholderId
+          ? {
+              ...img,
+              src: j.images[0],
+              promptHint: `${image.promptHint || "이미지"}-누끼`,
+            }
+          : img,
+      ),
+    );
+    setSelectedIds([placeholderId]);
+    recordHistory({
+      kind: "배경 제거",
+      prompt: "배경 제거 (투명 PNG)",
+      size,
+      quality,
+      refs: 1,
+    });
+    window.dispatchEvent(new Event("usage-updated"));
+  } catch (error) {
+    setImages((prev) => prev.filter((img) => img.id !== placeholderId));
+    toast({
+      title: "배경 제거 실패",
+      description: error instanceof Error ? error.message : "알 수 없는 오류",
+      variant: "destructive",
+      action: retryAction(() => runRemoveBackground(deps)),
+    });
+  } finally {
+    setIsGenerating(false);
+  }
+}
+
 // 카드뉴스 모드: 표지를 참조로 페이지들을 같은 스타일로 순차 생성
 export async function runCardnews(deps: {
   cover: PlacedImage;
