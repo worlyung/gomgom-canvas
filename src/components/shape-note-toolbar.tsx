@@ -1,8 +1,7 @@
 "use client";
 // 선택된 도형 / 메모의 속성 편집 바
-import type { PlacedNote, PlacedShape } from "@/types/canvas";
+import type { PlacedShape } from "@/types/canvas";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 
 const COLORS = [
   "#e11d48",
@@ -111,62 +110,4 @@ export function ShapeToolbar({
   );
 }
 
-export function NoteToolbar({
-  item,
-  onChange,
-  onDelete,
-}: {
-  item: PlacedNote;
-  onChange: (patch: Partial<PlacedNote>) => void;
-  onDelete: () => void;
-}) {
-  const NOTE_COLORS = ["#fef08a", "#fecaca", "#bbf7d0", "#bfdbfe", "#e9d5ff"];
-  return (
-    <div className="flex flex-col gap-2 rounded-xl border bg-background/60 p-2">
-      <Textarea
-        value={item.text}
-        onChange={(e) => onChange({ text: e.target.value })}
-        placeholder="고칠 점을 적어두세요 (예: 제목 더 크게, 날짜 위치 아래로)"
-        className="h-14 resize-none"
-        style={{ fontSize: "14px" }}
-      />
-      <div className="flex flex-wrap items-center gap-2">
-        {NOTE_COLORS.map((c) => (
-          <button
-            key={c}
-            onClick={() => onChange({ color: c })}
-            className={`h-5 w-5 rounded border ${item.color === c ? "ring-2 ring-blue-500" : ""}`}
-            style={{ backgroundColor: c }}
-          />
-        ))}
-        <Button
-          variant={item.done ? "secondary" : "ghost"}
-          size="sm"
-          className="h-7 text-xs"
-          onClick={() => onChange({ done: !item.done })}
-        >
-          {item.done ? "✓ 처리됨" : "처리 표시"}
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 text-xs"
-          onClick={() => onChange({ width: item.width === 220 ? 320 : 220 })}
-        >
-          너비 {item.width === 220 ? "넓게" : "좁게"}
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 text-xs text-destructive"
-          onClick={onDelete}
-        >
-          삭제
-        </Button>
-      </div>
-      <p className="px-1 text-[11px] text-muted-foreground">
-        연결선 끝 동그라미를 끌어 가리킬 곳을 정하세요 · 메모는 결과물에 안 찍힙니다
-      </p>
-    </div>
-  );
-}
+// NoteToolbar는 제거됨 — 메모는 메모지 위에서 바로 고친다 (note-inline-editor.tsx)

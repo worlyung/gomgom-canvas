@@ -13,10 +13,30 @@ interface Props {
   onChange: (id: string, patch: Partial<PlacedNote>) => void;
   onDragStart: () => void;
   onDragEnd: () => void;
+  /** 메모지 위에 편집기(textarea)를 얹는 동안은 캔버스 글자를 숨긴다 (겹쳐 보이지 않게) */
+  hideText?: boolean;
 }
 
-const PAD = 10;
-const FONT = 14;
+export const NOTE_PAD = 14;
+export const NOTE_FONT = 20;
+export const NOTE_LINE_HEIGHT = 1.5;
+
+/** 메모지 너비 — 좁게/넓게 두 단계 */
+export const NOTE_WIDTH_NARROW = 340;
+export const NOTE_WIDTH_WIDE = 500;
+
+/** 메모지 높이 — 캔버스 도형과 위에 얹는 편집기가 같은 값을 써야 어긋나지 않는다. */
+export function noteHeight(text: string, width: number): number {
+  const lines = Math.max(1, text.split("\n").length);
+  // 글자 하나가 대략 폰트 크기의 0.62배 폭 (한글 기준으로 넉넉히)
+  const perLine = Math.max(6, Math.floor((width - NOTE_PAD * 2) / (NOTE_FONT * 0.62)));
+  const est = Math.ceil(text.length / perLine);
+  const rows = Math.max(2, Math.max(lines, est));
+  return NOTE_PAD * 2 + rows * Math.round(NOTE_FONT * NOTE_LINE_HEIGHT) + 4;
+}
+
+const PAD = NOTE_PAD;
+const FONT = NOTE_FONT;
 
 export function CanvasNote({
   item,
@@ -25,10 +45,9 @@ export function CanvasNote({
   onChange,
   onDragStart,
   onDragEnd,
+  hideText,
 }: Props) {
-  const lines = Math.max(1, item.text.split("\n").length);
-  const est = Math.ceil(item.text.length / Math.max(8, item.width / 9));
-  const height = PAD * 2 + Math.max(lines, est) * (FONT + 6) + 6;
+  const height = noteHeight(item.text, item.width);
 
   // 연결선은 메모의 네 변 중 목표에 가장 가까운 지점에서 출발한다
   const cx = item.x + item.width / 2;
@@ -111,17 +130,19 @@ export function CanvasNote({
           stroke={isSelected ? "#3b82f6" : undefined}
           strokeWidth={isSelected ? 2 : 0}
         />
-        <Text
-          x={PAD}
-          y={PAD}
-          width={item.width - PAD * 2}
-          text={item.text || "메모를 입력하세요"}
-          fontSize={FONT}
-          lineHeight={1.45}
-          fill="#3f3f46"
-          fontFamily="'Noto Sans KR', 'Malgun Gothic', sans-serif"
-          listening={false}
-        />
+        {!hideText && (
+          <Text
+            x={PAD}
+            y={PAD}
+            width={item.width - PAD * 2}
+            text={item.text || "메모를 입력하세요"}
+            fontSize={FONT}
+            lineHeight={NOTE_LINE_HEIGHT}
+            fill="#3f3f46"
+            fontFamily="'Noto Sans KR', 'Malgun Gothic', sans-serif"
+            listening={false}
+          />
+        )}
         {item.done && (
           <Line
             points={[PAD, height / 2, item.width - PAD, height / 2]}

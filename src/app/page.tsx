@@ -62,8 +62,9 @@ import { CanvasImage } from "@/components/canvas/CanvasImage";
 import { CanvasText } from "@/components/canvas/CanvasText";
 import { TextToolbar, FONT_CHOICES } from "@/components/text-toolbar";
 import { CanvasShape } from "@/components/canvas/CanvasShape";
-import { CanvasNote } from "@/components/canvas/CanvasNote";
-import { ShapeToolbar, NoteToolbar } from "@/components/shape-note-toolbar";
+import { CanvasNote, NOTE_WIDTH_NARROW } from "@/components/canvas/CanvasNote";
+import { ShapeToolbar } from "@/components/shape-note-toolbar";
+import { NoteInlineEditor } from "@/components/note-inline-editor";
 import { ToolPalette } from "@/components/tool-palette";
 import { BoardPanel, type BoardMeta } from "@/components/board-panel";
 import { loadBoard, saveBoard } from "@/lib/board-sync";
@@ -244,6 +245,8 @@ export default function OverlayPage() {
     Map<string, { x: number; y: number }>
   >(new Map());
   const [isDraggingImage, setIsDraggingImage] = useState(false);
+  // 메모를 끄는 동안은 위에 얹은 편집기를 숨긴다 (좌표가 놓은 뒤에 갱신되므로)
+  const [isDraggingNote, setIsDraggingNote] = useState(false);
   const [hiddenVideoControlsIds, setHiddenVideoControlsIds] = useState<
     Set<string>
   >(new Set());
@@ -2086,12 +2089,12 @@ export default function OverlayPage() {
       {
         id,
         text: "",
-        x: cx - 110,
-        y: cy - 40,
-        width: 220,
+        x: cx - NOTE_WIDTH_NARROW / 2,
+        y: cy - 50,
+        width: NOTE_WIDTH_NARROW,
         color: "#fef08a",
         targetX: cx + 30,
-        targetY: cy + 140,
+        targetY: cy + 180,
       },
     ]);
     setSelectedIds([id]);
@@ -2216,6 +2219,15 @@ export default function OverlayPage() {
       setIsGenerating,
       toast,
     });
+  };
+
+  // 이미지 대상 액션 한 곳 — 왼쪽 도구 팔레트와 우클릭 메뉴가 같이 쓴다
+  const handleEditAction = (action: string) => {
+    if (action === "cardnews") setCardnewsOpen(true);
+    else if (action === "removebg") removeBgForSelected();
+    else if (action === "cutout") cutoutForSelected();
+    else if (action.startsWith("expand-")) runExpandFor(action.slice(7));
+    else openMaskEdit(action as "brush" | "point" | "text");
   };
 
   const handleRun = async () => {
@@ -3587,24 +3599,55 @@ export default function OverlayPage() {
                                 ),
                               )
                             }
-                            onDragStart={() => saveToHistory()}
-                            onDragEnd={() => {}}
+                            hideText={
+                              !isDraggingNote &&
+                              selectedIds.length === 1 &&
+                              selectedIds[0] === n.id
+                            }
+                            onDragStart={() => {
+                              saveToHistory();
+                              setIsDraggingNote(true);
+                            }}
+                            onDragEnd={() => setIsDraggingNote(false)}
                           />
                         ))}
                     </Layer>
                   </Stage>
                 )}
+
+                {/* 메모 편집 — 메모지 위에 바로 얹는다 (끄는 중엔 숨김) */}
+                {(() => {
+                  if (isDraggingNote || selectedIds.length !== 1) return null;
+                  const nt = notes.find((x) => x.id === selectedIds[0]);
+                  if (!nt) return null;
+                  return (
+                    <NoteInlineEditor
+                      item={nt}
+                      viewport={viewport}
+                      onChange={(patch) =>
+                        setNotes((prev) =>
+                          prev.map((x) =>
+                            x.id === nt.id ? { ...x, ...patch } : x,
+                          ),
+                        )
+                      }
+                      onDelete={() => {
+                        saveToHistory();
+                        setNotes((prev) => prev.filter((x) => x.id !== nt.id));
+                        setSelectedIds([]);
+                      }}
+                      onClose={() => setSelectedIds([])}
+                    />
+                  );
+                })()}
               </div>
             </ContextMenuTrigger>
             <CanvasContextMenu
               selectedIds={selectedIds}
               images={images}
               videos={videos}
-              isGenerating={isGenerating}
-              generationSettings={generationSettings}
               isolateInputValue={isolateInputValue}
               isIsolating={isIsolating}
-              handleRun={handleRun}
               handleDuplicate={handleDuplicate}
               handleRemoveBackground={handleRemoveBackground}
               handleCombineImages={handleCombineImages}
@@ -3617,14 +3660,7 @@ export default function OverlayPage() {
               setCroppingImageId={setCroppingImageId}
               setIsolateInputValue={setIsolateInputValue}
               setIsolateTarget={setIsolateTarget}
-              onEditAction={(action) => {
-                if (action === "cardnews") setCardnewsOpen(true);
-                else if (action === "removebg") removeBgForSelected();
-                else if (action === "cutout") cutoutForSelected();
-                else if (action.startsWith("expand-"))
-                  runExpandFor(action.slice(7));
-                else openMaskEdit(action as "brush" | "point" | "text");
-              }}
+              onEditAction={handleEditAction}
               sendToFront={sendToFront}
               sendToBack={sendToBack}
               bringForward={bringForward}
@@ -3917,25 +3953,7 @@ export default function OverlayPage() {
                         }}
                       />
                     );
-                  const nt = notes.find((x) => selectedIds.includes(x.id));
-                  if (nt)
-                    return (
-                      <NoteToolbar
-                        item={nt}
-                        onChange={(patch) =>
-                          setNotes((prev) =>
-                            prev.map((x) =>
-                              x.id === nt.id ? { ...x, ...patch } : x,
-                            ),
-                          )
-                        }
-                        onDelete={() => {
-                          saveToHistory();
-                          setNotes((prev) => prev.filter((x) => x.id !== nt.id));
-                          setSelectedIds([]);
-                        }}
-                      />
-                    );
+                  // 메모는 하단 바가 아니라 메모지 위에서 바로 고친다 (NoteInlineEditor)
                   return null;
                 })()}
 
@@ -3969,7 +3987,9 @@ export default function OverlayPage() {
                         prompt: e.target.value,
                       })
                     }
-                    placeholder={`프롬프트를 입력하세요… (${checkOS("Win") || checkOS("Linux") ? "Ctrl" : "⌘"}+Enter 실행)`}
+                    // OS 분기를 아예 안 쓴다 — 서버는 브라우저의 OS를 모르니 ⌘로 렌더하고
+                    // 윈도우 브라우저는 Ctrl로 렌더해서 하이드레이션이 깨졌다. 둘 다 적으면 안 갈린다.
+                    placeholder="프롬프트를 입력하세요… (Ctrl/⌘+Enter 실행)"
                     className="w-full h-20 resize-none border-none p-2 pr-36"
                     style={{ fontSize: "16px" }}
                     onKeyDown={(e) => {
@@ -4471,6 +4491,11 @@ export default function OverlayPage() {
             onAddShape={addShape}
             onAddNote={addNote}
             onUpload={openFilePicker}
+            onEditAction={handleEditAction}
+            imageSelected={
+              selectedIds.length === 1 &&
+              images.some((img) => img.id === selectedIds[0])
+            }
           />
           <GeneratingIndicator active={isGenerating} note={progressNote} />
           {isStorageLoaded &&
@@ -4500,16 +4525,31 @@ export default function OverlayPage() {
                   image={img}
                   screenRect={maskEdit.rect}
                   mode={maskEdit.mode}
-                  onApply={(maskDataUrl, text) => {
+                  onApply={(maskDataUrl, text, regions) => {
                     const isText = maskEdit.mode === "text" && text;
                     setMaskEdit(null);
+                    // 영역이 둘 이상이면 어느 지시가 어느 자리인지 위치로 묶어 한 문장에 담는다
+                    const multiPrompt = regions?.length
+                      ? "표시한 영역이 여러 곳이다. 각 영역을 아래 지시대로 따로 고쳐라.\n" +
+                        regions
+                          .map(
+                            (r) =>
+                              `${r.label}) ${r.where} 영역 → ${r.instruction}`,
+                          )
+                          .join("\n") +
+                        "\n지시가 없는 부분과 표시하지 않은 영역은 전혀 건드리지 마."
+                      : null;
                     runMaskEdit({
                       image: img,
                       maskDataUrl,
                       prompt: isText
                         ? `칠한 부분의 글자를 "${text}"로 바꿔줘. 원래 서체·색·크기·배치는 그대로 유지하고, 칠하지 않은 영역은 전혀 건드리지 마.`
-                        : generationSettings.prompt,
-                      historyKind: isText ? "글자수정" : undefined,
+                        : multiPrompt || generationSettings.prompt,
+                      historyKind: isText
+                        ? "글자수정"
+                        : multiPrompt
+                          ? "다중 수정"
+                          : undefined,
                       quality: imageQuality,
                       setImages,
                       setSelectedIds,

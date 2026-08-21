@@ -12,7 +12,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ShortcutBadge } from "./ShortcutBadge";
 import {
-  Play,
   Copy,
   Crop,
   Scissors,
@@ -34,18 +33,14 @@ import { exportVideoAsGif } from "@/utils/gif-export";
 import type {
   PlacedImage,
   PlacedVideo,
-  GenerationSettings,
 } from "@/types/canvas";
 
 interface CanvasContextMenuProps {
   selectedIds: string[];
   images: PlacedImage[];
   videos?: PlacedVideo[];
-  isGenerating: boolean;
-  generationSettings: GenerationSettings;
   isolateInputValue: string;
   isIsolating: boolean;
-  handleRun: () => void;
   handleDuplicate: () => void;
   handleRemoveBackground: () => void;
   handleCombineImages: () => void;
@@ -69,11 +64,8 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
   selectedIds,
   images,
   videos = [], // Provide a default empty array
-  isGenerating,
-  generationSettings,
   isolateInputValue,
   isIsolating,
-  handleRun,
   handleDuplicate,
   handleRemoveBackground,
   handleCombineImages,
@@ -94,27 +86,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
 }) => {
   return (
     <ContextMenuContent>
-      <ContextMenuItem
-        onClick={handleRun}
-        disabled={isGenerating || !generationSettings.prompt.trim()}
-        className="flex items-center justify-between gap-2"
-      >
-        <div className="flex items-center gap-2">
-          {isGenerating ? (
-            <SpinnerIcon className="h-4 w-4 animate-spin text-content" />
-          ) : (
-            <Play className="h-4 w-4 text-content" />
-          )}
-          <span>Run</span>
-        </div>
-        <ShortcutBadge
-          variant="alpha"
-          size="xs"
-          shortcut={
-            checkOS("Win") || checkOS("Linux") ? "ctrl+enter" : "meta+enter"
-          }
-        />
-      </ContextMenuItem>
+      {/* Run 제거 — 하단 바 ▶ 실행(Ctrl+Enter)과 하는 일이 같아서 중복이었다 */}
       <ContextMenuItem
         onClick={handleDuplicate}
         disabled={selectedIds.length === 0}
@@ -142,43 +114,70 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
       {onEditAction &&
         selectedIds.length === 1 &&
         images.some((img) => img.id === selectedIds[0]) && (
-          <ContextMenuSub>
-            <ContextMenuSubTrigger className="flex items-center gap-2">
-              ✏️ AI 수정
-            </ContextMenuSubTrigger>
-            <ContextMenuSubContent className="w-64">
-              <ContextMenuItem onClick={() => onEditAction("brush")}>
-                🖌 부분수정 — 고칠 부분 칠하기
-              </ContextMenuItem>
-              <ContextMenuItem onClick={() => onEditAction("point")}>
-                📍 포인트수정 — 고칠 것 콕 찍기
-              </ContextMenuItem>
-              <ContextMenuItem onClick={() => onEditAction("text")}>
-                ✏️ 글자수정 — 글자 칠하고 새 문구
-              </ContextMenuItem>
-              <ContextMenuSeparator />
-              <ContextMenuItem onClick={() => onEditAction("cutout")}>
-                ✂️ 오려내기 — 원본 그대로, 배경만 투명 (무료)
-              </ContextMenuItem>
-              <ContextMenuItem onClick={() => onEditAction("removebg")}>
-                🫥 배경 제거 — AI가 피사체를 다시 그림
-              </ContextMenuItem>
-              <ContextMenuSeparator />
-              <ContextMenuItem onClick={() => onEditAction("expand-1536x1024")}>
-                ↔ 가로로 전개
-              </ContextMenuItem>
-              <ContextMenuItem onClick={() => onEditAction("expand-1024x1536")}>
-                ↕ 세로로 전개
-              </ContextMenuItem>
-              <ContextMenuItem onClick={() => onEditAction("expand-1024x1024")}>
-                ⬜ 정사각 전개
-              </ContextMenuItem>
-              <ContextMenuSeparator />
-              <ContextMenuItem onClick={() => onEditAction("cardnews")}>
-                🗂 카드뉴스 페이지 생성
-              </ContextMenuItem>
-            </ContextMenuSubContent>
-          </ContextMenuSub>
+          <>
+            {/* 왼쪽 도구 팔레트와 같은 묶음: 수정 / 배경 분리 / 전개 / 생성 */}
+            <ContextMenuSub>
+              <ContextMenuSubTrigger className="flex items-center gap-2">
+                🖌 수정
+              </ContextMenuSubTrigger>
+              <ContextMenuSubContent className="w-64">
+                <ContextMenuItem onClick={() => onEditAction("brush")}>
+                  🖌 부분수정 — 고칠 부분 칠하기
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => onEditAction("point")}>
+                  📍 포인트수정 — 고칠 것 콕 찍기
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => onEditAction("text")}>
+                  ✏️ 글자수정 — 글자 칠하고 새 문구
+                </ContextMenuItem>
+              </ContextMenuSubContent>
+            </ContextMenuSub>
+            <ContextMenuSub>
+              <ContextMenuSubTrigger className="flex items-center gap-2">
+                ✂️ 배경 분리
+              </ContextMenuSubTrigger>
+              <ContextMenuSubContent className="w-64">
+                <ContextMenuItem onClick={() => onEditAction("cutout")}>
+                  ✂️ 오려내기 — 원본 그대로, 배경만 투명 (무료)
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => onEditAction("removebg")}>
+                  🫥 배경 제거 — AI가 피사체를 다시 그림
+                </ContextMenuItem>
+              </ContextMenuSubContent>
+            </ContextMenuSub>
+            <ContextMenuSub>
+              <ContextMenuSubTrigger className="flex items-center gap-2">
+                ⤢ 전개
+              </ContextMenuSubTrigger>
+              <ContextMenuSubContent className="w-64">
+                <ContextMenuItem
+                  onClick={() => onEditAction("expand-1536x1024")}
+                >
+                  ↔ 가로로 전개
+                </ContextMenuItem>
+                <ContextMenuItem
+                  onClick={() => onEditAction("expand-1024x1536")}
+                >
+                  ↕ 세로로 전개
+                </ContextMenuItem>
+                <ContextMenuItem
+                  onClick={() => onEditAction("expand-1024x1024")}
+                >
+                  ⬜ 정사각 전개
+                </ContextMenuItem>
+              </ContextMenuSubContent>
+            </ContextMenuSub>
+            <ContextMenuSub>
+              <ContextMenuSubTrigger className="flex items-center gap-2">
+                🗂 생성
+              </ContextMenuSubTrigger>
+              <ContextMenuSubContent className="w-64">
+                <ContextMenuItem onClick={() => onEditAction("cardnews")}>
+                  🗂 카드뉴스 페이지 생성 — 이 이미지를 표지로
+                </ContextMenuItem>
+              </ContextMenuSubContent>
+            </ContextMenuSub>
+          </>
         )}
       {/* Temporarily disabled Video to Video option
       {selectedIds.length === 1 &&
