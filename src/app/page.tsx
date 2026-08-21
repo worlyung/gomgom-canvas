@@ -64,6 +64,8 @@ import { TextToolbar, FONT_CHOICES } from "@/components/text-toolbar";
 import { CanvasShape } from "@/components/canvas/CanvasShape";
 import { CanvasNote } from "@/components/canvas/CanvasNote";
 import { ShapeToolbar, NoteToolbar } from "@/components/shape-note-toolbar";
+import { ToolPalette } from "@/components/tool-palette";
+import { SIZE_PRESETS, normalizeSize } from "@/lib/image-sizes";
 import { CanvasVideo } from "@/components/canvas/CanvasVideo";
 import { VideoControls } from "@/components/canvas/VideoControls";
 import { ImageToVideoDialog } from "@/components/canvas/ImageToVideoDialog";
@@ -179,6 +181,13 @@ export default function OverlayPage() {
   const [transparentBg, setTransparentBg] = useState(false);
   const [progressNote, setProgressNote] = useState("");
   const [isBaking, setIsBaking] = useState(false); // 굽는 순간엔 메모를 숨긴다
+  const [customSizeOpen, setCustomSizeOpen] = useState(false);
+  const [isEnhancing, setIsEnhancing] = useState(false);
+  const [promptBeforeEnhance, setPromptBeforeEnhance] = useState<string | null>(
+    null,
+  );
+  const [customW, setCustomW] = useState("1600");
+  const [customH, setCustomH] = useState("2400");
   const [maskEdit, setMaskEdit] = useState<{
     id: string;
     mode: "brush" | "point" | "text";
@@ -938,6 +947,8 @@ export default function OverlayPage() {
             width: element.width || 220,
             color: element.color || "#fef08a",
             done: element.done,
+            targetX: element.targetX ?? element.transform.x + 140,
+            targetY: element.targetY ?? element.transform.y + 180,
           });
           continue;
         }
@@ -1824,6 +1835,69 @@ export default function OverlayPage() {
     });
   }, []);
 
+  const openFilePicker = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*,.md,.txt,.pdf";
+    input.multiple = true;
+    input.style.position = "fixed";
+    input.style.opacity = "0";
+    input.style.pointerEvents = "none";
+    input.onchange = (e) => {
+      try {
+        handleFileUpload((e.target as HTMLInputElement).files);
+      } finally {
+        if (input.parentNode) document.body.removeChild(input);
+      }
+    };
+    document.body.appendChild(input);
+    input.click();
+    setTimeout(() => {
+      if (input.parentNode) document.body.removeChild(input);
+    }, 30000);
+  };
+
+  // 대충 쓴 프롬프트를 구체적인 묘사로 부풀린다
+  const enhancePrompt = async () => {
+    const raw = generationSettings.prompt.trim();
+    if (!raw) {
+      toast({ title: "먼저 뭘 만들지 한 줄 적어주세요", variant: "destructive" });
+      return;
+    }
+    setIsEnhancing(true);
+    try {
+      const styleLabel = styleModels.find(
+        (m) => m.id === generationSettings.styleId,
+      )?.name;
+      const resp = await fetch("/api/enhance-prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: raw,
+          size: imageSize,
+          styleLabel,
+          hasRefs: selectedIds.some((id) => images.some((i) => i.id === id)),
+        }),
+      });
+      const j = await resp.json();
+      if (!resp.ok) throw new Error(j.error || `HTTP ${resp.status}`);
+      setPromptBeforeEnhance(raw);
+      setGenerationSettings((prev) => ({ ...prev, prompt: j.prompt }));
+      toast({
+        title: "프롬프트를 다듬었어요",
+        description: "마음에 안 들면 ↩ 되돌리기를 누르세요",
+      });
+    } catch (e) {
+      toast({
+        title: "다듬기 실패",
+        description: e instanceof Error ? e.message : "알 수 없는 오류",
+        variant: "destructive",
+      });
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
+
   const addShape = (kind: PlacedShape["kind"]) => {
     const id = `shape-${Date.now()}`;
     const cx = (canvasSize.width / 2 - viewport.x) / viewport.scale;
@@ -1862,6 +1936,8 @@ export default function OverlayPage() {
         y: cy - 40,
         width: 220,
         color: "#fef08a",
+        targetX: cx + 30,
+        targetY: cy + 140,
       },
     ]);
     setSelectedIds([id]);
@@ -3420,7 +3496,7 @@ export default function OverlayPage() {
             />
           </div>
 
-          <div className="fixed bottom-0 left-0 right-0 md:absolute md:bottom-4 md:left-1/2 md:transform md:-translate-x-1/2 z-20 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] md:p-0 md:pb-0 md:max-w-[648px]">
+          <div className="fixed bottom-0 left-0 right-0 md:absolute md:bottom-4 md:left-1/2 md:transform md:-translate-x-1/2 z-20 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] md:p-0 md:pb-0 md:w-[min(92vw,720px)]">
             <div
               className={cn(
                 "bg-card/95 backdrop-blur-lg rounded-3xl",
@@ -3797,19 +3873,63 @@ export default function OverlayPage() {
                   )}
                 </div>
 
-                <div className="flex items-center gap-2 px-1 pb-1">
-                  <Select value={imageSize} onValueChange={setImageSize}>
-                    <SelectTrigger className="h-7 w-[140px] text-xs">
-                      <SelectValue />
+                <div className="flex flex-wrap items-center gap-1.5 px-1 pb-1">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="h-7 text-xs"
+                    disabled={isEnhancing || !generationSettings.prompt.trim()}
+                    onClick={enhancePrompt}
+                    title="대충 쓴 문장을 구체적인 묘사로 바꿔줍니다"
+                  >
+                    {isEnhancing ? "다듬는 중…" : "✨ 프롬프트 다듬기"}
+                  </Button>
+                  {promptBeforeEnhance !== null && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        setGenerationSettings((prev) => ({
+                          ...prev,
+                          prompt: promptBeforeEnhance,
+                        }));
+                        setPromptBeforeEnhance(null);
+                      }}
+                    >
+                      ↩ 되돌리기
+                    </Button>
+                  )}
+                  <Select
+                    value={imageSize}
+                    onValueChange={(v) => {
+                      if (v === "__custom") setCustomSizeOpen(true);
+                      else setImageSize(v);
+                    }}
+                  >
+                    <SelectTrigger className="h-7 w-[132px] text-xs">
+                      <SelectValue>
+                        {SIZE_PRESETS.find((p) => p.value === imageSize)
+                          ?.label || `직접 ${imageSize}`}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="1024x1024">정사각 1024</SelectItem>
-                      <SelectItem value="1536x1024">가로 1536×1024</SelectItem>
-                      <SelectItem value="1024x1536">세로 1024×1536</SelectItem>
+                      {SIZE_PRESETS.map((p) => (
+                        <SelectItem key={p.value} value={p.value}>
+                          <span className="flex items-center gap-2">
+                            <span>{p.label}</span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {p.value.replace("x", "×")}
+                              {p.note ? ` · ${p.note}` : ""}
+                            </span>
+                          </span>
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="__custom">✎ 직접 입력…</SelectItem>
                     </SelectContent>
                   </Select>
                   <Select value={imageQuality} onValueChange={setImageQuality}>
-                    <SelectTrigger className="h-7 w-[90px] text-xs">
+                    <SelectTrigger className="h-7 w-[86px] text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -3818,51 +3938,6 @@ export default function OverlayPage() {
                       <SelectItem value="low">저품질</SelectItem>
                     </SelectContent>
                   </Select>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-7 text-xs">
-                        ◇ 도형 ▾
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      <DropdownMenuItem onClick={() => addShape("rect")}>
-                        ▭ 사각형 (강조 박스)
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => addShape("ellipse")}>
-                        ◯ 동그라미
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => addShape("triangle")}>
-                        △ 세모
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => addShape("star")}>
-                        ★ 별
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => addShape("arrow")}>
-                        ↗ 화살표
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => addShape("line")}>
-                        ╱ 선
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={addNote}
-                    title="고칠 점을 메모로 붙입니다 (화면에만 보이고 결과물엔 안 찍힘)"
-                  >
-                    📝 메모
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={addTextLayer}
-                    title="정확한 글자를 얹습니다 (AI가 그린 글자와 달리 오타가 없고 수정이 무료)"
-                  >
-                    T 텍스트
-                  </Button>
                   <Button
                     variant={transparentBg ? "secondary" : "ghost"}
                     size="sm"
@@ -3876,108 +3951,103 @@ export default function OverlayPage() {
                   >
                     {transparentBg ? "☑ 투명 배경" : "☐ 투명 배경"}
                   </Button>
+
                   {selectedIds.length > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={() =>
-                        downloadImagesAsZip(
-                          images.filter((img) => selectedIds.includes(img.id)),
-                        )
-                      }
-                    >
-                      ZIP 다운로드 ({selectedIds.length})
-                    </Button>
+                    <>
+                      <div className="mx-0.5 h-4 w-px bg-border" />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() =>
+                          downloadImagesAsZip(
+                            images.filter((img) => selectedIds.includes(img.id)),
+                          )
+                        }
+                      >
+                        ⬇ ZIP ({selectedIds.length})
+                      </Button>
+                    </>
                   )}
                   {selectedIds.length === 1 &&
                     images.some((i) => i.id === selectedIds[0]) && (
-                      <>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 text-xs"
-                            >
-                              ✏️ 수정 ▾
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start">
-                            <DropdownMenuItem
-                              onClick={() => openMaskEdit("brush")}
-                            >
-                              🖌 부분수정 — 고칠 부분 칠하기
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => openMaskEdit("point")}
-                            >
-                              📍 포인트수정 — 고칠 것 콕 찍기
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => openMaskEdit("text")}
-                            >
-                              ✏️ 글자수정 — 글자 칠하고 새 문구
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            {(texts.length > 0 || shapes.length > 0) && (
-                              <>
-                                <DropdownMenuItem onClick={bakeTextIntoImage}>
-                                  🔥 합치기 — 얹은 글자·도형을 이미지로 굽기
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                              </>
-                            )}
-                            <DropdownMenuItem onClick={cutoutForSelected}>
-                              ✂️ 오려내기 — 원본 그대로, 배경만 투명 (무료)
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={removeBgForSelected}>
-                              🫥 배경 제거 — AI가 피사체를 다시 그림
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => runExpandFor("1536x1024")}
-                            >
-                              ↔ 가로로 전개 (현수막·배너)
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => runExpandFor("1024x1536")}
-                            >
-                              ↕ 세로로 전개 (스토리·배너)
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => runExpandFor("1024x1024")}
-                            >
-                              ⬜ 정사각 전개 (SNS 피드)
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => setCardnewsOpen(true)}
-                            >
-                              🗂 카드뉴스 — 표지 스타일로 페이지 생성
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="h-7 text-xs"
+                          >
+                            ✏️ 이 이미지 수정 ▾
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          {(texts.length > 0 || shapes.length > 0) && (
+                            <>
+                              <DropdownMenuItem onClick={bakeTextIntoImage}>
+                                🔥 합치기 — 얹은 글자·도형을 이미지로 굽기
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                            </>
+                          )}
+                          <DropdownMenuItem onClick={() => openMaskEdit("brush")}>
+                            🖌 부분수정 — 고칠 부분 칠하기
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openMaskEdit("point")}>
+                            📍 포인트수정 — 고칠 것 콕 찍기
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openMaskEdit("text")}>
+                            ✏️ 글자수정 — 글자 칠하고 새 문구
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={cutoutForSelected}>
+                            ✂️ 오려내기 — 원본 그대로, 배경만 투명 (무료)
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={removeBgForSelected}>
+                            🫥 배경 제거 — AI가 피사체를 다시 그림
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => runExpandFor("1536x1024")}
+                          >
+                            ↔ 가로로 전개 (현수막·배너)
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => runExpandFor("1024x1536")}
+                          >
+                            ↕ 세로로 전개 (스토리·배너)
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => runExpandFor("1024x1024")}
+                          >
+                            ⬜ 정사각 전개 (SNS 피드)
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setCardnewsOpen(true)}>
+                            🗂 카드뉴스 — 표지 스타일로 페이지 생성
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     )}
                 </div>
 
                 {/* Style dropdown and Run button */}
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   {/* Style selector button */}
                   <Button
                     variant="secondary"
-                    className="flex items-center gap-2"
+                    size="sm"
+                    className="flex h-8 min-w-0 shrink items-center gap-1.5"
                     onClick={() => setIsStyleDialogOpen(true)}
                   >
                     {(() => {
                       if (generationSettings.styleId === "custom") {
                         return (
                           <>
-                            <div className="w-5 h-5 flex items-center justify-center">
-                              <Plus className="w-4 h-4" />
+                            <div className="w-4 h-4 flex items-center justify-center">
+                              <Plus className="w-3.5 h-3.5" />
                             </div>
-                            <span className="text-sm">Custom</span>
+                            <span className="truncate text-xs">스타일 선택</span>
                           </>
                         );
                       }
@@ -3990,10 +4060,10 @@ export default function OverlayPage() {
                           <img
                             src={selectedModel?.imageSrc}
                             alt={selectedModel?.name}
-                            className="w-5 h-5 rounded-xl object-cover"
+                            className="w-4 h-4 rounded-md object-cover"
                           />
-                          <span className="text-sm">
-                            {selectedModel?.name || "Simpsons Style"}
+                          <span className="truncate text-xs">
+                            {selectedModel?.name || "스타일 선택"}
                           </span>
                         </>
                       );
@@ -4166,6 +4236,12 @@ export default function OverlayPage() {
           />
 
           <UsageBadge />
+          <ToolPalette
+            onAddText={addTextLayer}
+            onAddShape={addShape}
+            onAddNote={addNote}
+            onUpload={openFilePicker}
+          />
           <GeneratingIndicator active={isGenerating} note={progressNote} />
           {isStorageLoaded &&
             images.length === 0 &&
@@ -4237,6 +4313,67 @@ export default function OverlayPage() {
               onClose={() => setHistoryOpen(false)}
             />
           )}
+          <Dialog open={customSizeOpen} onOpenChange={setCustomSizeOpen}>
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle>크기 직접 입력</DialogTitle>
+              </DialogHeader>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={customW}
+                  onChange={(e) => setCustomW(e.target.value)}
+                  placeholder="가로"
+                  inputMode="numeric"
+                  style={{ fontSize: "16px" }}
+                />
+                <span className="text-muted-foreground">×</span>
+                <Input
+                  value={customH}
+                  onChange={(e) => setCustomH(e.target.value)}
+                  placeholder="세로"
+                  inputMode="numeric"
+                  style={{ fontSize: "16px" }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                16의 배수로 자동 조정됩니다 · 가장 긴 변 3840px 이하 · 전체
+                약 440만 픽셀 이하 (예: 2480×1760)
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => setCustomSizeOpen(false)}
+                >
+                  취소
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    const r = normalizeSize(Number(customW), Number(customH));
+                    if ("error" in r) {
+                      toast({
+                        title: "쓸 수 없는 크기",
+                        description: r.error,
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    setImageSize(r.value);
+                    setCustomSizeOpen(false);
+                    toast({
+                      title: `크기를 ${r.value.replace("x", "×")}로 정했어요`,
+                      description: r.adjusted
+                        ? "16의 배수로 맞춰 조정했습니다"
+                        : undefined,
+                    });
+                  }}
+                >
+                  적용
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
           <Dialog open={cardnewsOpen} onOpenChange={setCardnewsOpen}>
             <DialogContent className="max-w-md">
               <DialogHeader>

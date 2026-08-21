@@ -41,6 +41,8 @@ interface CanvasElement {
   opacity?: number;
   color?: string;
   done?: boolean;
+  targetX?: number;
+  targetY?: number;
   zIndex: number;
   width?: number;
   height?: number;

@@ -165,7 +165,7 @@ export function NoteToolbar({
         </Button>
       </div>
       <p className="px-1 text-[11px] text-muted-foreground">
-        메모는 화면에만 보입니다 — 이미지로 구울 때 함께 찍히지 않아요
+        연결선 끝 동그라미를 끌어 가리킬 곳을 정하세요 · 메모는 결과물에 안 찍힙니다
       </p>
     </div>
   );

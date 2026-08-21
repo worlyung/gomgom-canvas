@@ -78,6 +78,8 @@ export const noteToCanvasElement = (n: PlacedNote): CanvasElement => ({
   text: n.text,
   color: n.color,
   done: n.done,
+  targetX: n.targetX,
+  targetY: n.targetY,
 });
 
 // Helper to convert PlacedVideo to storage format

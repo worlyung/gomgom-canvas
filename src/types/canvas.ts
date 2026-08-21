@@ -62,6 +62,8 @@ export interface PlacedNote {
   width: number;
   color: string; // 포스트잇 색
   done?: boolean; // 처리 완료 표시
+  targetX: number; // 가리키는 지점 (연결선이 여기로 향한다)
+  targetY: number;
 }
 
 export interface PlacedVideo extends Omit<PlacedImage, "isGenerated"> {
