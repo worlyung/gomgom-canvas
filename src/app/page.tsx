@@ -65,6 +65,10 @@ import { CanvasShape } from "@/components/canvas/CanvasShape";
 import { CanvasNote } from "@/components/canvas/CanvasNote";
 import { ShapeToolbar, NoteToolbar } from "@/components/shape-note-toolbar";
 import { ToolPalette } from "@/components/tool-palette";
+import {
+  runCampaign,
+  type CampaignPlan,
+} from "@/lib/handlers/campaign-handler";
 import { SIZE_PRESETS, normalizeSize } from "@/lib/image-sizes";
 import {
   ProviderSettings,
@@ -192,6 +196,10 @@ export default function OverlayPage() {
   const [progressNote, setProgressNote] = useState("");
   const [isBaking, setIsBaking] = useState(false); // 굽는 순간엔 메모를 숨긴다
   const [customSizeOpen, setCustomSizeOpen] = useState(false);
+  const [campaignOpen, setCampaignOpen] = useState(false);
+  const [campaignRequest, setCampaignRequest] = useState("");
+  const [campaignPlan, setCampaignPlan] = useState<CampaignPlan | null>(null);
+  const [isPlanning, setIsPlanning] = useState(false);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [promptBeforeEnhance, setPromptBeforeEnhance] = useState<string | null>(
     null,
@@ -1906,6 +1914,50 @@ export default function OverlayPage() {
     } finally {
       setIsEnhancing(false);
     }
+  };
+
+  const planCampaign = async () => {
+    if (!campaignRequest.trim()) return;
+    setIsPlanning(true);
+    setCampaignPlan(null);
+    try {
+      const resp = await fetch("/api/campaign-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ request: campaignRequest }),
+      });
+      const j = await resp.json();
+      if (!resp.ok) throw new Error(j.error || `HTTP ${resp.status}`);
+      setCampaignPlan(j);
+    } catch (e) {
+      toast({
+        title: "계획 세우기 실패",
+        description: e instanceof Error ? e.message : "알 수 없는 오류",
+        variant: "destructive",
+      });
+    } finally {
+      setIsPlanning(false);
+    }
+  };
+
+  const startCampaign = () => {
+    if (!campaignPlan) return;
+    const cx = (canvasSize.width / 2 - viewport.x) / viewport.scale;
+    const cy = (canvasSize.height / 2 - viewport.y) / viewport.scale;
+    setCampaignOpen(false);
+    runCampaign({
+      plan: campaignPlan,
+      quality: imageQuality,
+      provider: providerId,
+      geminiModel,
+      startX: cx - 600,
+      startY: cy - 180,
+      setImages,
+      setSelectedIds,
+      setIsGenerating,
+      setProgressNote,
+      toast,
+    });
   };
 
   const addShape = (kind: PlacedShape["kind"]) => {
@@ -3896,6 +3948,18 @@ export default function OverlayPage() {
                   >
                     {isEnhancing ? "다듬는 중…" : "✨ 프롬프트 다듬기"}
                   </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      setCampaignRequest(generationSettings.prompt);
+                      setCampaignOpen(true);
+                    }}
+                    title="한 줄 요청을 로고·포스터·배너 등으로 쪼개 한 번에 만듭니다"
+                  >
+                    🎯 캠페인 한 번에
+                  </Button>
                   {promptBeforeEnhance !== null && (
                     <Button
                       variant="ghost"
@@ -4379,6 +4443,94 @@ export default function OverlayPage() {
               onClose={() => setHistoryOpen(false)}
             />
           )}
+          <Dialog open={campaignOpen} onOpenChange={setCampaignOpen}>
+            <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>캠페인 한 번에 만들기</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">
+                한 줄로 요청하면 키비주얼·로고·포스터·배너 등으로 쪼개 계획을
+                세웁니다. 계획을 보고 확인한 뒤에 만들어요.
+              </p>
+              <Textarea
+                value={campaignRequest}
+                onChange={(e) => setCampaignRequest(e.target.value)}
+                placeholder="예: 2026 부천 달빛국악제 브랜드 캠페인 만들어줘. 가을밤 국악 축제, 가족 관객"
+                className="h-20"
+                style={{ fontSize: "14px" }}
+              />
+              {!campaignPlan && (
+                <div className="flex justify-end">
+                  <Button
+                    variant="primary"
+                    disabled={isPlanning || !campaignRequest.trim()}
+                    onClick={planCampaign}
+                  >
+                    {isPlanning ? "계획 세우는 중…" : "계획 세우기"}
+                  </Button>
+                </div>
+              )}
+
+              {campaignPlan && (
+                <div className="space-y-3">
+                  <div className="rounded-xl border p-3">
+                    <p className="text-sm font-medium">{campaignPlan.concept}</p>
+                    <div className="mt-2 flex items-center gap-1.5">
+                      {(campaignPlan.palette || []).map((c) => (
+                        <span
+                          key={c}
+                          className="h-5 w-5 rounded-full border"
+                          style={{ backgroundColor: c }}
+                          title={c}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    {campaignPlan.items.map((it, i) => (
+                      <div
+                        key={i}
+                        className="rounded-lg border bg-background/60 p-2"
+                      >
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="rounded bg-blue-500/15 px-1.5 py-0.5 font-medium text-blue-600">
+                            {i + 1}. {it.role}
+                          </span>
+                          <span className="text-muted-foreground">
+                            {it.size.replace("x", "×")}
+                          </span>
+                          {i === 0 && (
+                            <span className="text-[10px] text-muted-foreground">
+                              — 이 톤을 나머지가 따라갑니다
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
+                          {it.prompt}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    {campaignPlan.items.length}장을 순서대로 만듭니다 · 몇 분
+                    걸리고 그만큼 비용이 듭니다
+                  </p>
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      variant="secondary"
+                      onClick={() => setCampaignPlan(null)}
+                    >
+                      다시 계획
+                    </Button>
+                    <Button variant="primary" onClick={startCampaign}>
+                      이대로 만들기
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+
           <Dialog open={customSizeOpen} onOpenChange={setCustomSizeOpen}>
             <DialogContent className="max-w-sm">
               <DialogHeader>
