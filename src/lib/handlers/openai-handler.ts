@@ -296,6 +296,78 @@ export async function runRemoveBackground(deps: {
   }
 }
 
+// 오려내기: 원본 픽셀 보존 + 배경만 투명 (로컬 모델, API 비용 없음)
+export async function runCutout(deps: {
+  image: PlacedImage;
+  setImages: React.Dispatch<React.SetStateAction<PlacedImage[]>>;
+  setSelectedIds: React.Dispatch<React.SetStateAction<string[]>>;
+  setIsGenerating: React.Dispatch<React.SetStateAction<boolean>>;
+  setProgressNote?: (msg: string) => void;
+  toast: RunDeps["toast"];
+}) {
+  const {
+    image,
+    setImages,
+    setSelectedIds,
+    setIsGenerating,
+    setProgressNote,
+    toast,
+  } = deps;
+
+  const placeholderId = `generated-${Date.now()}`;
+  setImages((prev) => [
+    ...prev,
+    {
+      id: placeholderId,
+      src: placeholderSrc,
+      x: image.x + image.width + 20,
+      y: image.y,
+      width: image.width,
+      height: image.height,
+      rotation: 0,
+      isGenerated: true,
+    },
+  ]);
+
+  setIsGenerating(true);
+  try {
+    const src = await exportImageAsDataUrl(image);
+    const { cutoutBackground } = await import("@/lib/cutout");
+    const cut = await cutoutBackground(src, (msg) => setProgressNote?.(msg));
+
+    setImages((prev) =>
+      prev.map((img) =>
+        img.id === placeholderId
+          ? {
+              ...img,
+              src: cut,
+              promptHint: `${image.promptHint || "이미지"}-오려냄`,
+            }
+          : img,
+      ),
+    );
+    setSelectedIds([placeholderId]);
+    recordHistory({
+      kind: "오려내기",
+      prompt: "배경 오려내기 (원본 보존·로컬 처리)",
+      size: "원본",
+      quality: "-",
+      refs: 1,
+    });
+  } catch (error) {
+    setImages((prev) => prev.filter((img) => img.id !== placeholderId));
+    toast({
+      title: "오려내기 실패",
+      description: error instanceof Error ? error.message : "알 수 없는 오류",
+      variant: "destructive",
+      action: retryAction(() => runCutout(deps)),
+    });
+  } finally {
+    setProgressNote?.("");
+    setIsGenerating(false);
+  }
+}
+
 // 카드뉴스 모드: 표지를 참조로 페이지들을 같은 스타일로 순차 생성
 export async function runCardnews(deps: {
   cover: PlacedImage;

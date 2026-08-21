@@ -3,7 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { SpinnerIcon } from "@/components/icons";
 
-export function GeneratingIndicator({ active }: { active: boolean }) {
+export function GeneratingIndicator({
+  active,
+  note,
+}: {
+  active: boolean;
+  note?: string;
+}) {
   const [elapsed, setElapsed] = useState(0);
   const startRef = useRef<number>(0);
 
@@ -29,7 +35,7 @@ export function GeneratingIndicator({ active }: { active: boolean }) {
         생성 중… {m}:{s}
       </span>
       <span className="text-xs text-muted-foreground">
-        (고품질은 1~3분 걸려요)
+        {note || "(고품질은 1~3분 걸려요)"}
       </span>
     </div>
   );

@@ -157,8 +157,11 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
                 ✏️ 글자수정 — 글자 칠하고 새 문구
               </ContextMenuItem>
               <ContextMenuSeparator />
+              <ContextMenuItem onClick={() => onEditAction("cutout")}>
+                ✂️ 오려내기 — 원본 그대로, 배경만 투명 (무료)
+              </ContextMenuItem>
               <ContextMenuItem onClick={() => onEditAction("removebg")}>
-                🫥 배경 제거 — 피사체만 투명 PNG로
+                🫥 배경 제거 — AI가 피사체를 다시 그림
               </ContextMenuItem>
               <ContextMenuSeparator />
               <ContextMenuItem onClick={() => onEditAction("expand-1536x1024")}>

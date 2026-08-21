@@ -113,6 +113,7 @@ import {
   runExpand,
   runCardnews,
   runRemoveBackground,
+  runCutout,
   placeholderSrc as generationPlaceholderSrc,
   type HistoryEntry,
 } from "@/lib/handlers/openai-handler";
@@ -162,6 +163,7 @@ export default function OverlayPage() {
   const [imageSize, setImageSize] = useState("1024x1024");
   const [imageQuality, setImageQuality] = useState("high");
   const [transparentBg, setTransparentBg] = useState(false);
+  const [progressNote, setProgressNote] = useState("");
   const [maskEdit, setMaskEdit] = useState<{
     id: string;
     mode: "brush" | "point" | "text";
@@ -1738,6 +1740,19 @@ export default function OverlayPage() {
     });
   };
 
+  const cutoutForSelected = () => {
+    const img = images.find((i) => i.id === selectedIds[0]);
+    if (!img) return;
+    runCutout({
+      image: img,
+      setImages,
+      setSelectedIds,
+      setIsGenerating,
+      setProgressNote,
+      toast,
+    });
+  };
+
   const runExpandFor = (target: string) => {
     const img = images.find((i) => i.id === selectedIds[0]);
     if (!img) return;
@@ -3066,6 +3081,7 @@ export default function OverlayPage() {
               onEditAction={(action) => {
                 if (action === "cardnews") setCardnewsOpen(true);
                 else if (action === "removebg") removeBgForSelected();
+                else if (action === "cutout") cutoutForSelected();
                 else if (action.startsWith("expand-"))
                   runExpandFor(action.slice(7));
                 else openMaskEdit(action as "brush" | "point" | "text");
@@ -3486,8 +3502,11 @@ export default function OverlayPage() {
                               ✏️ 글자수정 — 글자 칠하고 새 문구
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={cutoutForSelected}>
+                              ✂️ 오려내기 — 원본 그대로, 배경만 투명 (무료)
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={removeBgForSelected}>
-                              🫥 배경 제거 — 피사체만 투명 PNG로
+                              🫥 배경 제거 — AI가 피사체를 다시 그림
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
@@ -3721,7 +3740,7 @@ export default function OverlayPage() {
           />
 
           <UsageBadge />
-          <GeneratingIndicator active={isGenerating} />
+          <GeneratingIndicator active={isGenerating} note={progressNote} />
           {isStorageLoaded &&
             images.length === 0 &&
             videos.length === 0 &&
