@@ -139,7 +139,7 @@ import { GithubBadge } from "@/components/canvas/GithubBadge";
 import { GenerationsIndicator } from "@/components/generations-indicator";
 
 export default function OverlayPage() {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, resolvedTheme } = useTheme();
   const [images, setImages] = useState<PlacedImage[]>([]);
   const [videos, setVideos] = useState<PlacedVideo[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -3210,6 +3210,39 @@ export default function OverlayPage() {
                   </div>
                   <div className="flex-1" />
                   <div className="flex items-center gap-2">
+                    {/* 밝게/어둡게 원클릭 전환 */}
+                    <TooltipProvider>
+                      <Tooltip delayDuration={0}>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="secondary"
+                            size="icon-sm"
+                            onClick={() =>
+                              setTheme(resolvedTheme === "dark" ? "light" : "dark")
+                            }
+                            title={
+                              resolvedTheme === "dark"
+                                ? "밝은 화면으로"
+                                : "어두운 화면으로"
+                            }
+                          >
+                            {resolvedTheme === "dark" ? (
+                              <SunIcon className="h-3.5 w-3.5" />
+                            ) : (
+                              <MoonIcon className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <span>
+                            {resolvedTheme === "dark"
+                              ? "밝은 화면으로"
+                              : "어두운 화면으로"}
+                          </span>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
                     {/* 생성 이력 (F-10) */}
                     <TooltipProvider>
                       <Tooltip delayDuration={0}>
