@@ -65,6 +65,8 @@ import { CanvasShape } from "@/components/canvas/CanvasShape";
 import { CanvasNote } from "@/components/canvas/CanvasNote";
 import { ShapeToolbar, NoteToolbar } from "@/components/shape-note-toolbar";
 import { ToolPalette } from "@/components/tool-palette";
+import { BoardPanel, type BoardMeta } from "@/components/board-panel";
+import { loadBoard, saveBoard } from "@/lib/board-sync";
 import {
   runCampaign,
   type CampaignPlan,
@@ -197,6 +199,13 @@ export default function OverlayPage() {
   const [isBaking, setIsBaking] = useState(false); // 굽는 순간엔 메모를 숨긴다
   const [customSizeOpen, setCustomSizeOpen] = useState(false);
   const [campaignOpen, setCampaignOpen] = useState(false);
+  const [boardOpen, setBoardOpen] = useState(false);
+  const [boardId, setBoardId] = useState<string | null>(null);
+  const [boardName, setBoardName] = useState("");
+  const [boardUpdatedAt, setBoardUpdatedAt] = useState<string | undefined>();
+  const [myName, setMyName] = useState("");
+  const [boardBusy, setBoardBusy] = useState("");
+  const [boardRefresh, setBoardRefresh] = useState(0);
   const [campaignRequest, setCampaignRequest] = useState("");
   const [campaignPlan, setCampaignPlan] = useState<CampaignPlan | null>(null);
   const [isPlanning, setIsPlanning] = useState(false);
@@ -1837,6 +1846,13 @@ export default function OverlayPage() {
     });
   };
 
+  useEffect(() => {
+    setMyName(localStorage.getItem("gomgom-my-name") || "");
+  }, []);
+  useEffect(() => {
+    if (myName) localStorage.setItem("gomgom-my-name", myName);
+  }, [myName]);
+
   // 캔버스(Konva) 렌더는 웹폰트 다운로드를 유발하지 않는다 → 명시적으로 불러온 뒤 다시 그린다
   useEffect(() => {
     if (typeof document === "undefined" || !document.fonts) return;
@@ -1913,6 +1929,82 @@ export default function OverlayPage() {
       });
     } finally {
       setIsEnhancing(false);
+    }
+  };
+
+  const doSaveBoard = async (id: string, name: string, force = false) => {
+    setBoardBusy("저장 중…");
+    try {
+      const meta = await saveBoard({
+        boardId: id,
+        name,
+        myName,
+        knownUpdatedAt: force ? undefined : boardUpdatedAt,
+        images,
+        texts,
+        shapes,
+        notes,
+        viewport,
+        onProgress: (m) => setBoardBusy(m),
+      });
+      setBoardId(meta.id);
+      setBoardName(meta.name);
+      setBoardUpdatedAt(meta.updatedAt);
+      setBoardRefresh((n) => n + 1);
+      toast({ title: `"${meta.name}" 저장 완료` });
+    } catch (e) {
+      const conflict = (e as Error & { conflict?: boolean }).conflict;
+      if (conflict) {
+        if (
+          confirm(
+            `${e instanceof Error ? e.message : ""}
+
+그래도 내 것으로 덮어쓸까요? (상대 작업이 사라집니다)`,
+          )
+        ) {
+          await doSaveBoard(id, name, true);
+          return;
+        }
+        toast({ title: "저장하지 않았습니다", description: "먼저 상대 보드를 열어 확인하세요" });
+      } else {
+        toast({
+          title: "보드 저장 실패",
+          description: e instanceof Error ? e.message : "알 수 없는 오류",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setBoardBusy("");
+    }
+  };
+
+  const openBoard = async (b: BoardMeta) => {
+    setBoardBusy("불러오는 중…");
+    try {
+      const data = await loadBoard(b.id);
+      saveToHistory();
+      setImages(data.images);
+      setTexts(data.texts);
+      setShapes(data.shapes);
+      setNotes(data.notes);
+      setViewport(data.viewport);
+      setSelectedIds([]);
+      setBoardId(b.id);
+      setBoardName(data.meta.name);
+      setBoardUpdatedAt(data.meta.updatedAt);
+      setBoardOpen(false);
+      toast({
+        title: `"${data.meta.name}" 열었어요`,
+        description: `마지막 저장: ${data.meta.updatedBy}`,
+      });
+    } catch (e) {
+      toast({
+        title: "불러오기 실패",
+        description: e instanceof Error ? e.message : "알 수 없는 오류",
+        variant: "destructive",
+      });
+    } finally {
+      setBoardBusy("");
     }
   };
 
@@ -4364,6 +4456,14 @@ export default function OverlayPage() {
               className="h-6 w-6 rounded-lg"
             />
             <span className="text-sm font-semibold">곰곰 캔버스</span>
+            <div className="ml-1 h-4 w-px bg-border" />
+            <button
+              onClick={() => setBoardOpen(true)}
+              className="max-w-[180px] truncate rounded-lg px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent"
+              title="보드 저장·열기 (프로젝트 전환)"
+            >
+              {boardId ? `📋 ${boardName}` : "📋 보드 저장·열기"}
+            </button>
           </div>
           <UsageBadge />
           <ToolPalette
@@ -4443,6 +4543,44 @@ export default function OverlayPage() {
               onClose={() => setHistoryOpen(false)}
             />
           )}
+          <Dialog open={boardOpen} onOpenChange={setBoardOpen}>
+            <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>보드 (프로젝트)</DialogTitle>
+              </DialogHeader>
+              <BoardPanel
+                currentId={boardId}
+                currentName={boardName}
+                myName={myName}
+                busy={boardBusy}
+                refreshKey={boardRefresh}
+                onSetMyName={setMyName}
+                onSaveCurrent={() => boardId && doSaveBoard(boardId, boardName)}
+                onSaveAs={(name) =>
+                  doSaveBoard(
+                    `b${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
+                    name,
+                    true,
+                  )
+                }
+                onOpen={openBoard}
+                onDelete={async (b) => {
+                  if (!confirm(`"${b.name}" 보드를 지울까요? 되돌릴 수 없습니다.`))
+                    return;
+                  await fetch(`/api/boards/${b.id}`, { method: "DELETE" });
+                  if (b.id === boardId) {
+                    setBoardId(null);
+                    setBoardName("");
+                    setBoardUpdatedAt(undefined);
+                  }
+                  setBoardRefresh((n) => n + 1);
+                  toast({ title: "보드를 지웠어요" });
+                }}
+                onClose={() => setBoardOpen(false)}
+              />
+            </DialogContent>
+          </Dialog>
+
           <Dialog open={campaignOpen} onOpenChange={setCampaignOpen}>
             <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
               <DialogHeader>

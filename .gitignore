@@ -3,3 +3,6 @@
 node_modules
 .next
 .verceltsconfig.tsbuildinfo
+
+# 서버에 저장되는 보드(작업물) — 저장소에 올리지 않는다
+../boards/
