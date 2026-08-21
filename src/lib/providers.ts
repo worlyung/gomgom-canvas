@@ -60,15 +60,15 @@ export const PROVIDERS: ProviderDef[] = [
     envKey: "XAI_API_KEY",
     keyHint: "xai-...",
     docsUrl: "https://console.x.ai",
-    model: "grok-2-image",
+    model: "grok-imagine-image-2.0",
     caps: {
       generate: true,
-      reference: false,
+      reference: true, // 문서상 최대 3장 편집 지원 (크레딧이 없어 실호출 미검증)
       mask: false,
       transparent: false,
       customSize: false,
     },
-    note: "생성 전용 — 참조·부분수정·투명배경 미지원",
+    note: "생성·참조(최대 3장) — 부분수정·투명배경·크기지정 미지원. 품질은 low/medium만. ⚠️xAI 구독과 별개로 API 크레딧 충전 필요",
   },
 ];
 

@@ -129,16 +129,43 @@ async function runGemini(key: string, a: GenArgs): Promise<GenResult> {
 
 async function runGrok(key: string, a: GenArgs): Promise<GenResult> {
   const model = getProvider("grok").model;
-  const resp = await fetch("https://api.x.ai/v1/images/generations", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      prompt: a.prompt,
-      n: a.n,
-      response_format: "b64_json",
-    }),
-  });
+  // Grok은 품질이 low/medium만 (high 없음)
+  const quality = a.quality === "low" ? "low" : "medium";
+  let resp: Response;
+
+  if (a.refs.length > 0) {
+    // 참조 편집 — xAI는 OpenAI 호환 스펙을 따른다 (최대 3장)
+    // ⚠️ 크레딧이 없어 실호출로 확인하지 못한 경로
+    const form = new FormData();
+    form.set("model", model);
+    form.set("prompt", a.prompt);
+    form.set("n", String(a.n));
+    form.set("quality", quality);
+    form.set("response_format", "b64_json");
+    for (let i = 0; i < Math.min(a.refs.length, 3); i++) {
+      form.append("image[]", await dataUrlToBlob(a.refs[i]), `ref-${i}.png`);
+    }
+    resp = await fetch("https://api.x.ai/v1/images/edits", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}` },
+      body: form,
+    });
+  } else {
+    resp = await fetch("https://api.x.ai/v1/images/generations", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        prompt: a.prompt,
+        n: a.n,
+        quality,
+        response_format: "b64_json",
+      }),
+    });
+  }
   if (!resp.ok) throw new Error(`Grok ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
   const j = await resp.json();
   return {
