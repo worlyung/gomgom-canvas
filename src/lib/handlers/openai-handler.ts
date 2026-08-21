@@ -1,5 +1,6 @@
 // gpt-image-2 생성 흐름 (fal 대체): 선택 이미지 = 참조(F-04, 최대 16장) → /api/generate → 캔버스 배치
 import React from "react";
+import { genFetch, isCancel } from "@/lib/generation-abort";
 import type { PlacedImage } from "@/types/canvas";
 import { ToastAction, type ToastActionElement } from "@/components/ui/toast";
 
@@ -175,7 +176,7 @@ export async function runExpand(deps: {
 
     const prompt =
       "투명한 빈 영역을 원본 그림과 자연스럽게 이어지는 배경으로 채워서 화면을 확장해줘. 원본 영역의 그림·글자·구도는 그대로 유지.";
-    const resp = await fetch("/api/generate", {
+    const resp = await genFetch("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -202,6 +203,10 @@ export async function runExpand(deps: {
     window.dispatchEvent(new Event("usage-updated"));
   } catch (error) {
     setImages((prev) => prev.filter((img) => img.id !== placeholderId));
+    if (isCancel(error)) {
+      toast({ title: "사이즈 전개 취소했습니다" });
+      return;
+    }
     toast({
       title: "사이즈 전개 실패",
       description: error instanceof Error ? error.message : "알 수 없는 오류",
@@ -250,7 +255,7 @@ export async function runRemoveBackground(deps: {
 
     const prompt =
       "배경을 완전히 제거하고 주요 피사체만 남겨줘. 투명 배경. 피사체의 모양·색·질감·디테일은 원본 그대로 유지하고, 그림자나 배경 조각을 남기지 마.";
-    const resp = await fetch("/api/generate", {
+    const resp = await genFetch("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -287,6 +292,10 @@ export async function runRemoveBackground(deps: {
     window.dispatchEvent(new Event("usage-updated"));
   } catch (error) {
     setImages((prev) => prev.filter((img) => img.id !== placeholderId));
+    if (isCancel(error)) {
+      toast({ title: "배경 제거 취소했습니다" });
+      return;
+    }
     toast({
       title: "배경 제거 실패",
       description: error instanceof Error ? error.message : "알 수 없는 오류",
@@ -358,6 +367,10 @@ export async function runCutout(deps: {
     });
   } catch (error) {
     setImages((prev) => prev.filter((img) => img.id !== placeholderId));
+    if (isCancel(error)) {
+      toast({ title: "오려내기 취소했습니다" });
+      return;
+    }
     toast({
       title: "오려내기 실패",
       description: error instanceof Error ? error.message : "알 수 없는 오류",
@@ -410,7 +423,7 @@ export async function runCardnews(deps: {
     for (let i = 0; i < lines.length; i++) {
       const prompt = `이 표지와 같은 디자인 시스템(배색·서체 느낌·레이아웃 톤)을 유지한 카드뉴스의 ${i + 2}번째 내용 페이지를 만들어줘. 표지 복제가 아니라 내용 페이지다. 이 페이지에 담을 내용: ${lines[i]}`;
       try {
-        const resp = await fetch("/api/generate", {
+        const resp = await genFetch("/api/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ prompt, size, quality, refs: [coverSrc] }),
@@ -427,6 +440,12 @@ export async function runCardnews(deps: {
         ok++;
         window.dispatchEvent(new Event("usage-updated"));
       } catch (e) {
+        // 취소면 남은 자리표시자까지 걷어내고 루프를 끊는다
+        if (isCancel(e)) {
+          setImages((prev) => prev.filter((img) => !ids.slice(i).includes(img.id)));
+          toast({ title: "카드뉴스 생성 취소했습니다", description: `${ok}페이지까지 만들었어요` });
+          break;
+        }
         setImages((prev) => prev.filter((img) => img.id !== ids[i]));
         toast({
           title: `${i + 2}페이지 생성 실패`,
@@ -506,7 +525,7 @@ export async function runMaskEdit(deps: {
     await new Promise((r) => (probe.onload = r));
     const editSize = pickSize(probe.naturalWidth, probe.naturalHeight);
 
-    const resp = await fetch("/api/generate", {
+    const resp = await genFetch("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -539,6 +558,10 @@ export async function runMaskEdit(deps: {
     window.dispatchEvent(new Event("usage-updated"));
   } catch (error) {
     setImages((prev) => prev.filter((img) => img.id !== placeholderId));
+    if (isCancel(error)) {
+      toast({ title: "부분 수정 취소했습니다" });
+      return;
+    }
     toast({
       title: "부분 수정 실패",
       description: error instanceof Error ? error.message : "알 수 없는 오류",
@@ -615,7 +638,7 @@ export async function runOpenAIGeneration(deps: RunDeps) {
   setIsGenerating(true);
   try {
     const refs = await Promise.all(refImages.map(exportImageAsDataUrl));
-    const resp = await fetch("/api/generate", {
+    const resp = await genFetch("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -644,6 +667,10 @@ export async function runOpenAIGeneration(deps: RunDeps) {
     window.dispatchEvent(new Event("usage-updated"));
   } catch (error) {
     setImages((prev) => prev.filter((img) => img.id !== placeholderId));
+    if (isCancel(error)) {
+      toast({ title: "생성 취소했습니다" });
+      return;
+    }
     toast({
       title: "생성 실패",
       description: error instanceof Error ? error.message : "알 수 없는 오류",

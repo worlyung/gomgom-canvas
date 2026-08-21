@@ -2,6 +2,7 @@
 // 생성 진행 표시 — 경과 시간과 살아있는 스피너 (고품질 생성은 1~3분 걸린다)
 import { useEffect, useRef, useState } from "react";
 import { SpinnerIcon } from "@/components/icons";
+import { cancelGeneration } from "@/lib/generation-abort";
 
 export function GeneratingIndicator({
   active,
@@ -37,6 +38,13 @@ export function GeneratingIndicator({
       <span className="text-xs text-muted-foreground">
         {note || "(고품질은 1~3분 걸려요)"}
       </span>
+      <button
+        onClick={cancelGeneration}
+        title="진행 중인 생성을 멈춥니다 (이미 쓴 크레딧은 돌아오지 않아요)"
+        className="ml-1 rounded-full border px-2.5 py-1 text-xs font-medium text-destructive transition-colors hover:bg-destructive hover:text-destructive-foreground"
+      >
+        취소
+      </button>
     </div>
   );
 }

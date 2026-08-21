@@ -1,6 +1,7 @@
 // 캠페인 일괄 생성 — 키비주얼을 먼저 만들고, 나머지는 그것을 참조로 물려 톤을 맞춘다.
 // (로바트의 "canvas as context"를 우리 방식으로: 첫 결과가 뒤 작업의 재료가 된다)
 import type { PlacedImage } from "@/types/canvas";
+import { genFetch, isCancel } from "@/lib/generation-abort";
 import { placeholderSrc, slugFromPrompt } from "./openai-handler";
 
 export interface CampaignItem {
@@ -97,7 +98,7 @@ export async function runCampaign(deps: Deps) {
           : "";
 
       try {
-        const resp = await fetch("/api/generate", {
+        const resp = await genFetch("/api/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -125,6 +126,12 @@ export async function runCampaign(deps: Deps) {
         done++;
         window.dispatchEvent(new Event("usage-updated"));
       } catch (e) {
+        // 취소면 남은 자리표시자까지 걷어내고 루프를 끊는다
+        if (isCancel(e)) {
+          setImages((prev) => prev.filter((img) => !ids.slice(i).includes(img.id)));
+          toast({ title: "캠페인 생성 취소했습니다", description: `${done}종까지 만들었어요` });
+          break;
+        }
         setImages((prev) => prev.filter((img) => img.id !== ids[i]));
         toast({
           title: `${item.role} 생성 실패`,
