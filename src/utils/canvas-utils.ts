@@ -1,4 +1,4 @@
-import type { PlacedImage, PlacedVideo } from "@/types/canvas";
+import type { PlacedImage, PlacedText, PlacedVideo } from "@/types/canvas";
 import type { CanvasElement } from "@/lib/storage";
 
 export interface Viewport {
@@ -30,6 +30,21 @@ export const imageToCanvasElement = (image: PlacedImage): CanvasElement => ({
   zIndex: 0, // We'll use array order instead
   width: image.width,
   height: image.height,
+});
+
+// 텍스트 → 저장 형식
+export const textToCanvasElement = (t: PlacedText): CanvasElement => ({
+  id: t.id,
+  type: "text",
+  transform: { x: t.x, y: t.y, scale: 1, rotation: t.rotation },
+  zIndex: 0,
+  text: t.text,
+  fontSize: t.fontSize,
+  fill: t.fill,
+  fontFamily: t.fontFamily,
+  bold: t.bold,
+  align: t.align,
+  stroke: t.stroke,
 });
 
 // Helper to convert PlacedVideo to storage format

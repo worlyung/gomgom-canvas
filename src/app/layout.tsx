@@ -95,6 +95,17 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
+        {/* 캔버스 텍스트 레이어용 한글 폰트 (모두 OFL — 상업 사용 자유) */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&family=Black+Han+Sans&family=Nanum+Myeongjo:wght@400;700&family=Nanum+Pen+Script&display=swap"
+        />
         <meta name="color-scheme" content="dark" />
         <BotIdClient
           protect={[

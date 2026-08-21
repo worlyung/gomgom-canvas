@@ -27,6 +27,14 @@ interface CanvasElement {
   videoId?: string; // Reference to IndexedDB video
   transform: ImageTransform;
   promptHint?: string;
+  // 텍스트 레이어용
+  text?: string;
+  fontSize?: number;
+  fill?: string;
+  fontFamily?: string;
+  bold?: boolean;
+  align?: "left" | "center" | "right";
+  stroke?: string;
   zIndex: number;
   width?: number;
   height?: number;

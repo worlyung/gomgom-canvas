@@ -59,6 +59,8 @@ import { StreamingImage } from "@/components/canvas/StreamingImage";
 import { StreamingVideo } from "@/components/canvas/StreamingVideo";
 import { CropOverlayWrapper } from "@/components/canvas/CropOverlayWrapper";
 import { CanvasImage } from "@/components/canvas/CanvasImage";
+import { CanvasText } from "@/components/canvas/CanvasText";
+import { TextToolbar, FONT_CHOICES } from "@/components/text-toolbar";
 import { CanvasVideo } from "@/components/canvas/CanvasVideo";
 import { VideoControls } from "@/components/canvas/VideoControls";
 import { ImageToVideoDialog } from "@/components/canvas/ImageToVideoDialog";
@@ -77,11 +79,13 @@ import type {
   ActiveGeneration,
   ActiveVideoGeneration,
   SelectionBox,
+  PlacedText,
 } from "@/types/canvas";
 
 import {
   imageToCanvasElement,
   videoToCanvasElement,
+  textToCanvasElement,
 } from "@/utils/canvas-utils";
 import { checkOS } from "@/utils/os-utils";
 import { convertImageToVideo } from "@/utils/video-utils";
@@ -143,6 +147,7 @@ import { GenerationsIndicator } from "@/components/generations-indicator";
 export default function OverlayPage() {
   const { theme, setTheme, resolvedTheme } = useTheme();
   const [images, setImages] = useState<PlacedImage[]>([]);
+  const [texts, setTexts] = useState<PlacedText[]>([]);
   const [videos, setVideos] = useState<PlacedVideo[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isStorageLoaded, setIsStorageLoaded] = useState(false);
@@ -828,6 +833,7 @@ export default function OverlayPage() {
         elements: [
           ...images.map(imageToCanvasElement),
           ...videos.map(videoToCanvasElement),
+          ...texts.map(textToCanvasElement),
         ],
         backgroundColor: "#ffffff",
         lastModified: Date.now(),
@@ -877,7 +883,7 @@ export default function OverlayPage() {
       console.error("Failed to save to storage:", error);
       setIsSaving(false);
     }
-  }, [images, videos, viewport]);
+  }, [images, videos, texts, viewport]);
 
   // Load state from storage
   const loadFromStorage = useCallback(async () => {
@@ -891,7 +897,24 @@ export default function OverlayPage() {
       const loadedImages: PlacedImage[] = [];
       const loadedVideos: PlacedVideo[] = [];
 
+      const restoredTexts: PlacedText[] = [];
       for (const element of canvasState.elements) {
+        if (element.type === "text") {
+          restoredTexts.push({
+            id: element.id,
+            text: element.text || "",
+            x: element.transform.x,
+            y: element.transform.y,
+            rotation: element.transform.rotation,
+            fontSize: element.fontSize || 48,
+            fill: element.fill || "#111111",
+            fontFamily: element.fontFamily || FONT_CHOICES[0].value,
+            bold: element.bold,
+            align: element.align,
+            stroke: element.stroke,
+          });
+          continue;
+        }
         if (element.type === "image" && element.imageId) {
           const imageData = await canvasStorage.getImage(element.imageId);
           if (imageData) {
@@ -942,6 +965,7 @@ export default function OverlayPage() {
       }
 
       // Set loaded images and videos
+      setTexts(restoredTexts);
       if (loadedImages.length > 0) {
         setImages(loadedImages);
       }
@@ -1740,6 +1764,106 @@ export default function OverlayPage() {
     });
   };
 
+  // 캔버스(Konva) 렌더는 웹폰트 다운로드를 유발하지 않는다 → 명시적으로 불러온 뒤 다시 그린다
+  useEffect(() => {
+    if (typeof document === "undefined" || !document.fonts) return;
+    const families = FONT_CHOICES.map((f) =>
+      f.value.split(",")[0].replace(/['"]/g, "").trim(),
+    );
+    Promise.all(
+      families.flatMap((fam) => [
+        document.fonts.load(`400 16px "${fam}"`).catch(() => null),
+        document.fonts.load(`700 16px "${fam}"`).catch(() => null),
+      ]),
+    ).then(() => {
+      stageRef.current?.batchDraw();
+    });
+  }, []);
+
+  const addTextLayer = () => {
+    const id = `text-${Date.now()}`;
+    // 화면 중앙에 놓는다
+    const cx = (canvasSize.width / 2 - viewport.x) / viewport.scale;
+    const cy = (canvasSize.height / 2 - viewport.y) / viewport.scale;
+    saveToHistory();
+    setTexts((prev) => [
+      ...prev,
+      {
+        id,
+        text: "문구를 입력하세요",
+        x: cx - 120,
+        y: cy - 24,
+        fontSize: 48,
+        fill: "#111111",
+        fontFamily: FONT_CHOICES[0].value,
+        rotation: 0,
+      },
+    ]);
+    setSelectedIds([id]);
+  };
+
+  // 이미지 + 그 위 텍스트를 한 장으로 합쳐 새 이미지로 (다운로드·재편집용)
+  const bakeTextIntoImage = async () => {
+    const img = images.find((i) => i.id === selectedIds[0]);
+    if (!img) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    // 원본 해상도로 굽기 위해 배율 계산
+    const el = new window.Image();
+    el.src = img.src;
+    await new Promise((r) => (el.onload = r));
+    const pixelRatio = el.naturalWidth / (img.width * viewport.scale);
+
+    // 굽는 동안 선택 표시(그림자)가 찍히지 않도록 잠시 해제
+    const keep = selectedIds;
+    setSelectedIds([]);
+    await new Promise((r) => setTimeout(r, 60));
+
+    const dataUrl = stage.toDataURL({
+      x: img.x * viewport.scale + viewport.x,
+      y: img.y * viewport.scale + viewport.y,
+      width: img.width * viewport.scale,
+      height: img.height * viewport.scale,
+      pixelRatio,
+    });
+
+    // 합친 결과 안에 들어간 텍스트는 지우고, 원본 자리에 결과를 놓는다
+    const insideIds = texts
+      .filter(
+        (t) =>
+          t.x >= img.x - 20 &&
+          t.x <= img.x + img.width + 20 &&
+          t.y >= img.y - 20 &&
+          t.y <= img.y + img.height + 20,
+      )
+      .map((t) => t.id);
+    saveToHistory();
+    setTexts((prev) => prev.filter((t) => !insideIds.includes(t.id)));
+
+    const id = `baked-${Date.now()}`;
+    setImages((prev) => [
+      ...prev,
+      {
+        ...img,
+        id,
+        src: dataUrl,
+        x: img.x + img.width + 20,
+        promptHint: `${img.promptHint || "이미지"}-글자합침`,
+        cropX: undefined,
+        cropY: undefined,
+        cropWidth: undefined,
+        cropHeight: undefined,
+      },
+    ]);
+    setSelectedIds([id]);
+    toast({
+      title: "글자를 이미지에 합쳤어요",
+      description: "이제 그대로 내려받거나 다시 수정할 수 있습니다",
+    });
+    void keep;
+  };
+
   const cutoutForSelected = () => {
     const img = images.find((i) => i.id === selectedIds[0]);
     if (!img) return;
@@ -1788,6 +1912,7 @@ export default function OverlayPage() {
   const handleDelete = () => {
     // Save to history before deleting
     saveToHistory();
+    setTexts((prev) => prev.filter((t) => !selectedIds.includes(t.id)));
     setImages((prev) => prev.filter((img) => !selectedIds.includes(img.id)));
     setVideos((prev) => prev.filter((vid) => !selectedIds.includes(vid.id)));
     setSelectedIds([]);
@@ -2797,6 +2922,8 @@ export default function OverlayPage() {
                       {/* Selection box */}
                       <SelectionBoxComponent selectionBox={selectionBox} />
 
+                      {/* 텍스트 레이어는 항상 이미지 위 */}
+
                       {/* Render images */}
                       {images
                         .filter((image) => {
@@ -3052,6 +3179,32 @@ export default function OverlayPage() {
                             />
                           );
                         })()}
+                      {/* 텍스트 레이어 (이미지 위) */}
+                      {texts.map((t) => (
+                        <CanvasText
+                          key={t.id}
+                          item={t}
+                          isSelected={selectedIds.includes(t.id)}
+                          onSelect={(id, additive) =>
+                            setSelectedIds((prev) =>
+                              additive
+                                ? prev.includes(id)
+                                  ? prev.filter((p) => p !== id)
+                                  : [...prev, id]
+                                : [id],
+                            )
+                          }
+                          onChange={(id, patch) =>
+                            setTexts((prev) =>
+                              prev.map((x) =>
+                                x.id === id ? { ...x, ...patch } : x,
+                              ),
+                            )
+                          }
+                          onDragStart={() => saveToHistory()}
+                          onDragEnd={() => {}}
+                        />
+                      ))}
                     </Layer>
                   </Stage>
                 )}
@@ -3309,6 +3462,7 @@ export default function OverlayPage() {
                                 await canvasStorage.clearAll();
                                 setImages([]);
                                 setVideos([]);
+                                setTexts([]);
                                 setSelectedIds([]);
                                 setHistory([]);
                                 setHistoryIndex(-1);
@@ -3354,6 +3508,27 @@ export default function OverlayPage() {
                     </TooltipProvider>
                   </div>
                 </div>
+
+                {(() => {
+                  const sel = texts.find((t) => selectedIds.includes(t.id));
+                  return sel ? (
+                    <TextToolbar
+                      item={sel}
+                      onChange={(patch) =>
+                        setTexts((prev) =>
+                          prev.map((t) =>
+                            t.id === sel.id ? { ...t, ...patch } : t,
+                          ),
+                        )
+                      }
+                      onDelete={() => {
+                        saveToHistory();
+                        setTexts((prev) => prev.filter((t) => t.id !== sel.id));
+                        setSelectedIds([]);
+                      }}
+                    />
+                  ) : null;
+                })()}
 
                 <div className="relative">
                   <Textarea
@@ -3446,6 +3621,15 @@ export default function OverlayPage() {
                     </SelectContent>
                   </Select>
                   <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={addTextLayer}
+                    title="정확한 글자를 얹습니다 (AI가 그린 글자와 달리 오타가 없고 수정이 무료)"
+                  >
+                    T 텍스트
+                  </Button>
+                  <Button
                     variant={transparentBg ? "secondary" : "ghost"}
                     size="sm"
                     className={cn(
@@ -3502,6 +3686,14 @@ export default function OverlayPage() {
                               ✏️ 글자수정 — 글자 칠하고 새 문구
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
+                            {texts.length > 0 && (
+                              <>
+                                <DropdownMenuItem onClick={bakeTextIntoImage}>
+                                  🔥 글자 합치기 — 얹은 글자를 이미지로 굽기
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                              </>
+                            )}
                             <DropdownMenuItem onClick={cutoutForSelected}>
                               ✂️ 오려내기 — 원본 그대로, 배경만 투명 (무료)
                             </DropdownMenuItem>
@@ -3744,6 +3936,7 @@ export default function OverlayPage() {
           {isStorageLoaded &&
             images.length === 0 &&
             videos.length === 0 &&
+            texts.length === 0 &&
             !isGenerating && (
               <div className="pointer-events-none fixed inset-0 z-0 flex items-center justify-center">
                 <div className="text-center text-muted-foreground/60 select-none">

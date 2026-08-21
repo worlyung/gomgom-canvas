@@ -15,6 +15,21 @@ export interface PlacedImage {
   cropHeight?: number;
 }
 
+// 텍스트 레이어 — AI가 그린 글자와 달리 오타가 없고, 수정이 즉시·무료다
+export interface PlacedText {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  fontSize: number;
+  fill: string;
+  fontFamily: string;
+  bold?: boolean;
+  rotation: number;
+  align?: "left" | "center" | "right";
+  stroke?: string; // 테두리(밝은 배경 위 흰 글자 등)
+}
+
 export interface PlacedVideo extends Omit<PlacedImage, "isGenerated"> {
   isVideo: true;
   duration: number;
