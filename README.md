@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="public/logo.png" alt="곰곰 캔버스 로고" width="120">
+</p>
+
 # 곰곰 캔버스 (Gomgom Canvas)
 
 **제안서를 끌어다 놓으면 포스터가 나오는, OpenAI gpt-image-2 기반 무한 캔버스 이미지 에디터.**
@@ -30,7 +34,8 @@ fal.ai 의존을 걷어내고 OpenAI Images API 직결로 재구성했다. 한�
 | 🫥 **투명 배경 PNG** | ① 처음부터 배경 없이 생성(토글) ② AI가 피사체를 다시 그려 배경 제거 — 일러스트용 |
 | 💰 **사용량 표시** | 오늘/누적 호출 수·예상 비용 상시 표시 |
 | 📦 **ZIP 다운로드** | 선택한 이미지 일괄 다운로드 |
-| 🔒 **키 보호** | API 키는 중계 서버만 보관 — 브라우저·개발자도구 어디에도 노출 안 됨 |
+| 🔀 **제공자 3종** | OpenAI(gpt-image-2)·Gemini(나노바나나)·xAI Grok — 설정 화면에서 키 입력, 제공자별로 못 쓰는 기능은 자동 잠김 ([되는 것/안 되는 것](docs/providers.md)) |
+| 🔒 **키 보호** | API 키는 중계 서버만 보관 — 브라우저·개발자도구 어디에도 노출 안 됨. 여럿이 쓰는 서버는 `LOCK_KEY_EDITING=1`로 편집 잠금 |
 
 무한 캔버스(팬·줌·다중선택·실행취소·IndexedDB 자동저장)는 베이스 그대로.
 
@@ -61,8 +66,9 @@ fal.ai 의존을 걷어내고 OpenAI Images API 직결로 재구성했다. 한�
 **요구**: Node.js 20+, OpenAI API 키
 
 ```
-1. 키 설정 — 사용자 홈의 .env 파일에:  OPENAI_API_KEY=sk-...
-   (또는 환경변수 OPENAI_API_KEY)
+1. 키 설정 — 앱을 켠 뒤 설정(⚙️)에서 입력하거나,
+   사용자 홈의 .env 파일에:  OPENAI_API_KEY=sk-...
+   (Gemini는 GEMINI_API_KEY, Grok은 XAI_API_KEY — 자세한 차이는 docs/providers.md)
 
 2. 의존성 설치:
    npm install --ignore-scripts

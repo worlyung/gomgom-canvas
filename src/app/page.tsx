@@ -66,6 +66,11 @@ import { CanvasNote } from "@/components/canvas/CanvasNote";
 import { ShapeToolbar, NoteToolbar } from "@/components/shape-note-toolbar";
 import { ToolPalette } from "@/components/tool-palette";
 import { SIZE_PRESETS, normalizeSize } from "@/lib/image-sizes";
+import {
+  ProviderSettings,
+  useProviders,
+} from "@/components/provider-settings";
+import { getProvider, type ProviderId } from "@/lib/providers";
 import { CanvasVideo } from "@/components/canvas/CanvasVideo";
 import { VideoControls } from "@/components/canvas/VideoControls";
 import { ImageToVideoDialog } from "@/components/canvas/ImageToVideoDialog";
@@ -179,6 +184,10 @@ export default function OverlayPage() {
   const [imageSize, setImageSize] = useState("1024x1024");
   const [imageQuality, setImageQuality] = useState("high");
   const [transparentBg, setTransparentBg] = useState(false);
+  const [providerId, setProviderId] = useState<ProviderId>("openai");
+  const { list: providerList, editLocked, reload: reloadProviders } =
+    useProviders();
+  const provider = getProvider(providerId);
   const [progressNote, setProgressNote] = useState("");
   const [isBaking, setIsBaking] = useState(false); // 굽는 순간엔 메모를 숨긴다
   const [customSizeOpen, setCustomSizeOpen] = useState(false);
@@ -2073,6 +2082,7 @@ export default function OverlayPage() {
       size: imageSize,
       quality: imageQuality,
       transparent: transparentBg,
+      provider: providerId,
       canvasSize,
       viewport,
       setImages,
@@ -3901,6 +3911,32 @@ export default function OverlayPage() {
                     </Button>
                   )}
                   <Select
+                    value={providerId}
+                    onValueChange={(v) => setProviderId(v as ProviderId)}
+                  >
+                    <SelectTrigger className="h-7 w-[104px] text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {providerList.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          <span className="flex items-center gap-1.5">
+                            <span
+                              className={
+                                p.configured
+                                  ? "text-green-600"
+                                  : "text-muted-foreground"
+                              }
+                            >
+                              ●
+                            </span>
+                            {p.label.split(" (")[0]}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
                     value={imageSize}
                     onValueChange={(v) => {
                       if (v === "__custom") setCustomSizeOpen(true);
@@ -3946,8 +3982,13 @@ export default function OverlayPage() {
                       transparentBg &&
                         "ring-1 ring-blue-400/60 text-blue-600 dark:text-blue-400",
                     )}
+                    disabled={!provider.caps.transparent}
                     onClick={() => setTransparentBg((v) => !v)}
-                    title="배경 없이 요소만 그린 PNG로 생성 (로고·캐릭터·오려 쓸 요소용)"
+                    title={
+                      provider.caps.transparent
+                        ? "배경 없이 요소만 그린 PNG로 생성 (로고·캐릭터·오려 쓸 요소용)"
+                        : `${provider.label}는 투명 배경을 지원하지 않습니다`
+                    }
                   >
                     {transparentBg ? "☑ 투명 배경" : "☐ 투명 배경"}
                   </Button>
@@ -4235,6 +4276,15 @@ export default function OverlayPage() {
             canvasSize={canvasSize}
           />
 
+          {/* 앱 로고 */}
+          <div className="fixed left-4 top-4 z-30 flex items-center gap-2 rounded-2xl border bg-card/95 px-3 py-1.5 shadow-sm backdrop-blur">
+            <img
+              src="/logo-small.png"
+              alt="곰곰 캔버스"
+              className="h-6 w-6 rounded-lg"
+            />
+            <span className="text-sm font-semibold">곰곰 캔버스</span>
+          </div>
           <UsageBadge />
           <ToolPalette
             onAddText={addTextLayer}
@@ -4541,7 +4591,15 @@ export default function OverlayPage() {
           </DialogHeader>
 
           <div className="space-y-6">
-            {/* API 키는 중계 서버(.env)에서만 관리 — 화면 입력 없음 (F-05) */}
+            <ProviderSettings
+              list={providerList}
+              editLocked={editLocked}
+              onSaved={reloadProviders}
+              toast={toast}
+            />
+
+            <div className="h-px bg-border/40" />
+
             {/* Appearance */}
             <div className="flex justify-between">
               <div className="flex flex-col gap-2">
