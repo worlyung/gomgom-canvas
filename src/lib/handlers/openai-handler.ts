@@ -31,6 +31,7 @@ interface RunDeps {
   quality: string;
   transparent?: boolean; // 투명 배경 PNG
   provider?: string; // openai | gemini | grok
+  geminiModel?: string;
   canvasSize: { width: number; height: number };
   viewport: { x: number; y: number; scale: number };
   setImages: React.Dispatch<React.SetStateAction<PlacedImage[]>>;
@@ -558,6 +559,7 @@ export async function runOpenAIGeneration(deps: RunDeps) {
     quality,
     transparent,
     provider,
+    geminiModel,
     canvasSize,
     viewport,
     setImages,
@@ -623,6 +625,7 @@ export async function runOpenAIGeneration(deps: RunDeps) {
         refs,
         ...(transparent && { transparent: true }),
         ...(provider && { provider }),
+        ...(geminiModel && { geminiModel }),
       }),
     });
     const j = await resp.json();

@@ -70,7 +70,7 @@ import {
   ProviderSettings,
   useProviders,
 } from "@/components/provider-settings";
-import { getProvider, type ProviderId } from "@/lib/providers";
+import { getProvider, GEMINI_MODELS, type ProviderId } from "@/lib/providers";
 import { CanvasVideo } from "@/components/canvas/CanvasVideo";
 import { VideoControls } from "@/components/canvas/VideoControls";
 import { ImageToVideoDialog } from "@/components/canvas/ImageToVideoDialog";
@@ -188,6 +188,7 @@ export default function OverlayPage() {
   const { list: providerList, editLocked, reload: reloadProviders } =
     useProviders();
   const provider = getProvider(providerId);
+  const [geminiModel, setGeminiModel] = useState(GEMINI_MODELS[0].value);
   const [progressNote, setProgressNote] = useState("");
   const [isBaking, setIsBaking] = useState(false); // 굽는 순간엔 메모를 숨긴다
   const [customSizeOpen, setCustomSizeOpen] = useState(false);
@@ -2083,6 +2084,7 @@ export default function OverlayPage() {
       quality: imageQuality,
       transparent: transparentBg,
       provider: providerId,
+      geminiModel,
       canvasSize,
       viewport,
       setImages,
@@ -3936,6 +3938,20 @@ export default function OverlayPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {providerId === "gemini" && (
+                    <Select value={geminiModel} onValueChange={setGeminiModel}>
+                      <SelectTrigger className="h-7 w-[150px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {GEMINI_MODELS.map((m) => (
+                          <SelectItem key={m.value} value={m.value}>
+                            {m.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   <Select
                     value={imageSize}
                     onValueChange={(v) => {

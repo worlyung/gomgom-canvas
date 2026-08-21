@@ -44,7 +44,7 @@ export const PROVIDERS: ProviderDef[] = [
     envKey: "GEMINI_API_KEY",
     keyHint: "AIza...",
     docsUrl: "https://aistudio.google.com/apikey",
-    model: "gemini-3-pro-image-preview",
+    model: "gemini-3-pro-image", // 나노바나나 프로 (정식판)
     caps: {
       generate: true,
       reference: true,
@@ -52,7 +52,7 @@ export const PROVIDERS: ProviderDef[] = [
       transparent: false,
       customSize: false,
     },
-    note: "생성·참조는 되지만 부분수정·투명배경은 미지원. 무료 한도가 있어 시안 뽑기에 좋다",
+    note: "생성·참조는 되지만 부분수정·투명배경은 미지원. 크기는 비율로만 지정된다. 시안 대량 생산에 좋다",
   },
   {
     id: "grok",
@@ -63,13 +63,21 @@ export const PROVIDERS: ProviderDef[] = [
     model: "grok-imagine-image-2.0",
     caps: {
       generate: true,
-      reference: true, // 문서상 최대 3장 편집 지원 (크레딧이 없어 실호출 미검증)
+      reference: true, // 실측 확인 — 단 1장만 (image_url 문자열 하나)
       mask: false,
       transparent: false,
       customSize: false,
     },
-    note: "생성·참조(최대 3장) — 부분수정·투명배경·크기지정 미지원. 품질은 low/medium만. ⚠️xAI 구독과 별개로 API 크레딧 충전 필요",
+    note: "생성·참조(1장) — 부분수정·투명배경·크기지정 미지원. 품질은 low/medium만. ⚠️xAI 구독과 별개로 API 크레딧 충전 필요",
   },
+];
+
+/** 제미나이는 여러 이미지 모델이 있어 골라 쓴다 (실측 확인, 2026-08-20) */
+export const GEMINI_MODELS = [
+  { value: "gemini-3-pro-image", label: "나노바나나 프로 (품질)" },
+  { value: "gemini-3.1-flash-image", label: "나노바나나 2 (빠름)" },
+  { value: "gemini-3.1-flash-lite-image", label: "나노바나나 2 라이트" },
+  { value: "gemini-2.5-flash-image", label: "2.5 플래시 (구형)" },
 ];
 
 export const getProvider = (id: string): ProviderDef =>

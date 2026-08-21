@@ -11,6 +11,7 @@ export interface GenArgs {
   refs: string[];
   mask?: string;
   transparent?: boolean;
+  geminiModel?: string; // 제미나이 모델 선택 (없으면 기본값)
 }
 
 export interface GenResult {
@@ -92,7 +93,7 @@ function toAspectRatio(size: string): string {
 }
 
 async function runGemini(key: string, a: GenArgs): Promise<GenResult> {
-  const model = getProvider("gemini").model;
+  const model = a.geminiModel || getProvider("gemini").model;
   const parts: Record<string, unknown>[] = [{ text: a.prompt }];
   for (const ref of a.refs.slice(0, 3)) {
     const b64 = ref.split(",", 2)[1];
@@ -134,21 +135,22 @@ async function runGrok(key: string, a: GenArgs): Promise<GenResult> {
   let resp: Response;
 
   if (a.refs.length > 0) {
-    // 참조 편집 — xAI는 OpenAI 호환 스펙을 따른다 (최대 3장)
-    // ⚠️ 크레딧이 없어 실호출로 확인하지 못한 경로
-    const form = new FormData();
-    form.set("model", model);
-    form.set("prompt", a.prompt);
-    form.set("n", String(a.n));
-    form.set("quality", quality);
-    form.set("response_format", "b64_json");
-    for (let i = 0; i < Math.min(a.refs.length, 3); i++) {
-      form.append("image[]", await dataUrlToBlob(a.refs[i]), `ref-${i}.png`);
-    }
+    // 참조 편집 — xAI는 multipart가 아니라 JSON. image는 배열이 아니라 객체이고
+    // image_url은 문자열 하나만 받는다 (실측 2026-08-20: 참조 1장 제한)
     resp = await fetch("https://api.x.ai/v1/images/edits", {
       method: "POST",
-      headers: { Authorization: `Bearer ${key}` },
-      body: form,
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        prompt: a.prompt,
+        image: { image_url: a.refs[0] },
+        n: a.n,
+        quality,
+        response_format: "b64_json",
+      }),
     });
   } else {
     resp = await fetch("https://api.x.ai/v1/images/generations", {

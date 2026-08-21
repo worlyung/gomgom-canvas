@@ -61,6 +61,10 @@ fal.ai 의존을 걷어내고 OpenAI Images API 직결로 재구성했다. 한�
 
 ![카드뉴스 3장 — 표지와 같은 디자인의 내용 페이지](docs/images/cardnews.jpg)
 
+**🔀 제공자 3종 비교** — 같은 프롬프트, 왼쪽부터 OpenAI / Gemini 나노바나나2 / xAI Grok
+
+![세 제공자 결과 비교](docs/images/provider-compare.jpg)
+
 ## 실행
 
 **요구**: Node.js 20+, OpenAI API 키

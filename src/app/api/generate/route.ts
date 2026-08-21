@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
   const mask: string | undefined = body.mask;
   const transparent = !!body.transparent;
   const provider: ProviderId = body.provider || "openai";
+  const geminiModel: string | undefined = body.geminiModel;
 
   if (!prompt?.trim()) {
     return NextResponse.json({ error: "프롬프트가 비었습니다" }, { status: 400 });
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest) {
       refs,
       mask,
       transparent,
+      geminiModel,
     });
     if (!result.images.length) {
       return NextResponse.json({ error: "결과 이미지가 없습니다" }, { status: 502 });
