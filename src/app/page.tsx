@@ -61,6 +61,9 @@ import { CropOverlayWrapper } from "@/components/canvas/CropOverlayWrapper";
 import { CanvasImage } from "@/components/canvas/CanvasImage";
 import { CanvasText } from "@/components/canvas/CanvasText";
 import { TextToolbar, FONT_CHOICES } from "@/components/text-toolbar";
+import { CanvasShape } from "@/components/canvas/CanvasShape";
+import { CanvasNote } from "@/components/canvas/CanvasNote";
+import { ShapeToolbar, NoteToolbar } from "@/components/shape-note-toolbar";
 import { CanvasVideo } from "@/components/canvas/CanvasVideo";
 import { VideoControls } from "@/components/canvas/VideoControls";
 import { ImageToVideoDialog } from "@/components/canvas/ImageToVideoDialog";
@@ -80,12 +83,16 @@ import type {
   ActiveVideoGeneration,
   SelectionBox,
   PlacedText,
+  PlacedShape,
+  PlacedNote,
 } from "@/types/canvas";
 
 import {
   imageToCanvasElement,
   videoToCanvasElement,
   textToCanvasElement,
+  shapeToCanvasElement,
+  noteToCanvasElement,
 } from "@/utils/canvas-utils";
 import { checkOS } from "@/utils/os-utils";
 import { convertImageToVideo } from "@/utils/video-utils";
@@ -148,6 +155,8 @@ export default function OverlayPage() {
   const { theme, setTheme, resolvedTheme } = useTheme();
   const [images, setImages] = useState<PlacedImage[]>([]);
   const [texts, setTexts] = useState<PlacedText[]>([]);
+  const [shapes, setShapes] = useState<PlacedShape[]>([]);
+  const [notes, setNotes] = useState<PlacedNote[]>([]);
   const [videos, setVideos] = useState<PlacedVideo[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isStorageLoaded, setIsStorageLoaded] = useState(false);
@@ -169,6 +178,7 @@ export default function OverlayPage() {
   const [imageQuality, setImageQuality] = useState("high");
   const [transparentBg, setTransparentBg] = useState(false);
   const [progressNote, setProgressNote] = useState("");
+  const [isBaking, setIsBaking] = useState(false); // 굽는 순간엔 메모를 숨긴다
   const [maskEdit, setMaskEdit] = useState<{
     id: string;
     mode: "brush" | "point" | "text";
@@ -834,6 +844,8 @@ export default function OverlayPage() {
           ...images.map(imageToCanvasElement),
           ...videos.map(videoToCanvasElement),
           ...texts.map(textToCanvasElement),
+          ...shapes.map(shapeToCanvasElement),
+          ...notes.map(noteToCanvasElement),
         ],
         backgroundColor: "#ffffff",
         lastModified: Date.now(),
@@ -883,7 +895,7 @@ export default function OverlayPage() {
       console.error("Failed to save to storage:", error);
       setIsSaving(false);
     }
-  }, [images, videos, texts, viewport]);
+  }, [images, videos, texts, shapes, notes, viewport]);
 
   // Load state from storage
   const loadFromStorage = useCallback(async () => {
@@ -898,7 +910,37 @@ export default function OverlayPage() {
       const loadedVideos: PlacedVideo[] = [];
 
       const restoredTexts: PlacedText[] = [];
+      const restoredShapes: PlacedShape[] = [];
+      const restoredNotes: PlacedNote[] = [];
       for (const element of canvasState.elements) {
+        if (element.type === "shape") {
+          restoredShapes.push({
+            id: element.id,
+            kind: (element.kind || "rect") as PlacedShape["kind"],
+            x: element.transform.x,
+            y: element.transform.y,
+            width: element.width || 160,
+            height: element.height || 120,
+            rotation: element.transform.rotation,
+            fill: element.fill,
+            stroke: element.stroke || "#e11d48",
+            strokeWidth: element.strokeWidth || 4,
+            opacity: element.opacity ?? 1,
+          });
+          continue;
+        }
+        if (element.type === "note") {
+          restoredNotes.push({
+            id: element.id,
+            text: element.text || "",
+            x: element.transform.x,
+            y: element.transform.y,
+            width: element.width || 220,
+            color: element.color || "#fef08a",
+            done: element.done,
+          });
+          continue;
+        }
         if (element.type === "text") {
           restoredTexts.push({
             id: element.id,
@@ -966,6 +1008,8 @@ export default function OverlayPage() {
 
       // Set loaded images and videos
       setTexts(restoredTexts);
+      setShapes(restoredShapes);
+      setNotes(restoredNotes);
       if (loadedImages.length > 0) {
         setImages(loadedImages);
       }
@@ -1780,6 +1824,49 @@ export default function OverlayPage() {
     });
   }, []);
 
+  const addShape = (kind: PlacedShape["kind"]) => {
+    const id = `shape-${Date.now()}`;
+    const cx = (canvasSize.width / 2 - viewport.x) / viewport.scale;
+    const cy = (canvasSize.height / 2 - viewport.y) / viewport.scale;
+    saveToHistory();
+    setShapes((prev) => [
+      ...prev,
+      {
+        id,
+        kind,
+        x: cx - 80,
+        y: cy - 60,
+        width: 160,
+        height: 120,
+        rotation: 0,
+        fill: undefined,
+        stroke: "#e11d48",
+        strokeWidth: 4,
+        opacity: 1,
+      },
+    ]);
+    setSelectedIds([id]);
+  };
+
+  const addNote = () => {
+    const id = `note-${Date.now()}`;
+    const cx = (canvasSize.width / 2 - viewport.x) / viewport.scale;
+    const cy = (canvasSize.height / 2 - viewport.y) / viewport.scale;
+    saveToHistory();
+    setNotes((prev) => [
+      ...prev,
+      {
+        id,
+        text: "",
+        x: cx - 110,
+        y: cy - 40,
+        width: 220,
+        color: "#fef08a",
+      },
+    ]);
+    setSelectedIds([id]);
+  };
+
   const addTextLayer = () => {
     const id = `text-${Date.now()}`;
     // 화면 중앙에 놓는다
@@ -1815,10 +1902,11 @@ export default function OverlayPage() {
     await new Promise((r) => (el.onload = r));
     const pixelRatio = el.naturalWidth / (img.width * viewport.scale);
 
-    // 굽는 동안 선택 표시(그림자)가 찍히지 않도록 잠시 해제
+    // 굽는 동안 선택 표시와 메모가 찍히지 않도록 잠시 감춘다
     const keep = selectedIds;
     setSelectedIds([]);
-    await new Promise((r) => setTimeout(r, 60));
+    setIsBaking(true);
+    await new Promise((r) => setTimeout(r, 120));
 
     const dataUrl = stage.toDataURL({
       x: img.x * viewport.scale + viewport.x,
@@ -1828,7 +1916,16 @@ export default function OverlayPage() {
       pixelRatio,
     });
 
-    // 합친 결과 안에 들어간 텍스트는 지우고, 원본 자리에 결과를 놓는다
+    setIsBaking(false);
+
+    // 합친 결과 안에 들어간 텍스트·도형은 지우고, 원본 자리에 결과를 놓는다
+    const inBounds = (x: number, y: number) =>
+      x >= img.x - 20 &&
+      x <= img.x + img.width + 20 &&
+      y >= img.y - 20 &&
+      y <= img.y + img.height + 20;
+    const shapeIds = shapes.filter((sp) => inBounds(sp.x, sp.y)).map((sp) => sp.id);
+    setShapes((prev) => prev.filter((sp) => !shapeIds.includes(sp.id)));
     const insideIds = texts
       .filter(
         (t) =>
@@ -1913,6 +2010,8 @@ export default function OverlayPage() {
     // Save to history before deleting
     saveToHistory();
     setTexts((prev) => prev.filter((t) => !selectedIds.includes(t.id)));
+    setShapes((prev) => prev.filter((sp) => !selectedIds.includes(sp.id)));
+    setNotes((prev) => prev.filter((n) => !selectedIds.includes(n.id)));
     setImages((prev) => prev.filter((img) => !selectedIds.includes(img.id)));
     setVideos((prev) => prev.filter((vid) => !selectedIds.includes(vid.id)));
     setSelectedIds([]);
@@ -3179,6 +3278,33 @@ export default function OverlayPage() {
                             />
                           );
                         })()}
+                      {/* 도형 레이어 (이미지 위, 텍스트 아래) */}
+                      {shapes.map((sp) => (
+                        <CanvasShape
+                          key={sp.id}
+                          item={sp}
+                          isSelected={selectedIds.includes(sp.id)}
+                          onSelect={(id, additive) =>
+                            setSelectedIds((prev) =>
+                              additive
+                                ? prev.includes(id)
+                                  ? prev.filter((p) => p !== id)
+                                  : [...prev, id]
+                                : [id],
+                            )
+                          }
+                          onChange={(id, patch) =>
+                            setShapes((prev) =>
+                              prev.map((x) =>
+                                x.id === id ? { ...x, ...patch } : x,
+                              ),
+                            )
+                          }
+                          onDragStart={() => saveToHistory()}
+                          onDragEnd={() => {}}
+                        />
+                      ))}
+
                       {/* 텍스트 레이어 (이미지 위) */}
                       {texts.map((t) => (
                         <CanvasText
@@ -3205,6 +3331,34 @@ export default function OverlayPage() {
                           onDragEnd={() => {}}
                         />
                       ))}
+
+                      {/* 메모 — 항상 맨 위, 굽기에서는 제외 */}
+                      {!isBaking &&
+                        notes.map((n) => (
+                          <CanvasNote
+                            key={n.id}
+                            item={n}
+                            isSelected={selectedIds.includes(n.id)}
+                            onSelect={(id, additive) =>
+                              setSelectedIds((prev) =>
+                                additive
+                                  ? prev.includes(id)
+                                    ? prev.filter((p) => p !== id)
+                                    : [...prev, id]
+                                  : [id],
+                              )
+                            }
+                            onChange={(id, patch) =>
+                              setNotes((prev) =>
+                                prev.map((x) =>
+                                  x.id === id ? { ...x, ...patch } : x,
+                                ),
+                              )
+                            }
+                            onDragStart={() => saveToHistory()}
+                            onDragEnd={() => {}}
+                          />
+                        ))}
                     </Layer>
                   </Stage>
                 )}
@@ -3463,6 +3617,8 @@ export default function OverlayPage() {
                                 setImages([]);
                                 setVideos([]);
                                 setTexts([]);
+                                setShapes([]);
+                                setNotes([]);
                                 setSelectedIds([]);
                                 setHistory([]);
                                 setHistoryIndex(-1);
@@ -3508,6 +3664,48 @@ export default function OverlayPage() {
                     </TooltipProvider>
                   </div>
                 </div>
+
+                {(() => {
+                  const sp = shapes.find((x) => selectedIds.includes(x.id));
+                  if (sp)
+                    return (
+                      <ShapeToolbar
+                        item={sp}
+                        onChange={(patch) =>
+                          setShapes((prev) =>
+                            prev.map((x) =>
+                              x.id === sp.id ? { ...x, ...patch } : x,
+                            ),
+                          )
+                        }
+                        onDelete={() => {
+                          saveToHistory();
+                          setShapes((prev) => prev.filter((x) => x.id !== sp.id));
+                          setSelectedIds([]);
+                        }}
+                      />
+                    );
+                  const nt = notes.find((x) => selectedIds.includes(x.id));
+                  if (nt)
+                    return (
+                      <NoteToolbar
+                        item={nt}
+                        onChange={(patch) =>
+                          setNotes((prev) =>
+                            prev.map((x) =>
+                              x.id === nt.id ? { ...x, ...patch } : x,
+                            ),
+                          )
+                        }
+                        onDelete={() => {
+                          saveToHistory();
+                          setNotes((prev) => prev.filter((x) => x.id !== nt.id));
+                          setSelectedIds([]);
+                        }}
+                      />
+                    );
+                  return null;
+                })()}
 
                 {(() => {
                   const sel = texts.find((t) => selectedIds.includes(t.id));
@@ -3620,6 +3818,42 @@ export default function OverlayPage() {
                       <SelectItem value="low">저품질</SelectItem>
                     </SelectContent>
                   </Select>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-7 text-xs">
+                        ◇ 도형 ▾
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuItem onClick={() => addShape("rect")}>
+                        ▭ 사각형 (강조 박스)
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => addShape("ellipse")}>
+                        ◯ 동그라미
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => addShape("triangle")}>
+                        △ 세모
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => addShape("star")}>
+                        ★ 별
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => addShape("arrow")}>
+                        ↗ 화살표
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => addShape("line")}>
+                        ╱ 선
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={addNote}
+                    title="고칠 점을 메모로 붙입니다 (화면에만 보이고 결과물엔 안 찍힘)"
+                  >
+                    📝 메모
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -3638,7 +3872,7 @@ export default function OverlayPage() {
                         "ring-1 ring-blue-400/60 text-blue-600 dark:text-blue-400",
                     )}
                     onClick={() => setTransparentBg((v) => !v)}
-                    title="배경 없이 요소만 그린 PNG로 생성 (로고·캐릭터·오려 쓸 요소용). 이 모드는 투명을 지원하는 gpt-image-1로 생성됩니다"
+                    title="배경 없이 요소만 그린 PNG로 생성 (로고·캐릭터·오려 쓸 요소용)"
                   >
                     {transparentBg ? "☑ 투명 배경" : "☐ 투명 배경"}
                   </Button>
@@ -3686,10 +3920,10 @@ export default function OverlayPage() {
                               ✏️ 글자수정 — 글자 칠하고 새 문구
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            {texts.length > 0 && (
+                            {(texts.length > 0 || shapes.length > 0) && (
                               <>
                                 <DropdownMenuItem onClick={bakeTextIntoImage}>
-                                  🔥 글자 합치기 — 얹은 글자를 이미지로 굽기
+                                  🔥 합치기 — 얹은 글자·도형을 이미지로 굽기
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                               </>
@@ -3937,6 +4171,8 @@ export default function OverlayPage() {
             images.length === 0 &&
             videos.length === 0 &&
             texts.length === 0 &&
+            shapes.length === 0 &&
+            notes.length === 0 &&
             !isGenerating && (
               <div className="pointer-events-none fixed inset-0 z-0 flex items-center justify-center">
                 <div className="text-center text-muted-foreground/60 select-none">

@@ -11,12 +11,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// 한글이 정상 표시되는 계열만 (Windows/맥 공통 대비 폴백 포함)
+// 전부 구글 폰트(OFL) — 상업 사용 자유. 선택할 때 해당 폰트만 내려받는다.
 export const FONT_CHOICES = [
   { label: "고딕 (기본)", value: "'Noto Sans KR', 'Malgun Gothic', sans-serif" },
   { label: "포스터 제목", value: "'Black Han Sans', 'Malgun Gothic', sans-serif" },
+  { label: "둥근 제목", value: "'Do Hyeon', 'Malgun Gothic', sans-serif" },
+  { label: "귀여운 제목", value: "'Jua', 'Malgun Gothic', sans-serif" },
+  { label: "굵은 고딕", value: "'Gothic A1', 'Malgun Gothic', sans-serif" },
   { label: "명조", value: "'Nanum Myeongjo', Batang, serif" },
+  { label: "고운 명조", value: "'Gowun Batang', Batang, serif" },
+  { label: "얇은 명조", value: "'Song Myung', Batang, serif" },
   { label: "손글씨", value: "'Nanum Pen Script', cursive" },
+  { label: "붓글씨", value: "'Nanum Brush Script', cursive" },
+  { label: "삐뚤 손글씨", value: "'Gaegu', cursive" },
 ];
 
 const PRESET_COLORS = [
@@ -50,13 +57,13 @@ export function TextToolbar({ item, onChange, onDelete }: Props) {
           value={item.fontFamily}
           onValueChange={(v) => onChange({ fontFamily: v })}
         >
-          <SelectTrigger className="h-7 w-[118px] text-xs">
+          <SelectTrigger className="h-7 w-[124px] text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             {FONT_CHOICES.map((f) => (
               <SelectItem key={f.value} value={f.value}>
-                {f.label}
+                <span style={{ fontFamily: f.value }}>{f.label}</span>
               </SelectItem>
             ))}
           </SelectContent>
@@ -108,6 +115,13 @@ export function TextToolbar({ item, onChange, onDelete }: Props) {
               style={{ backgroundColor: c }}
             />
           ))}
+          <input
+            type="color"
+            value={/^#[0-9a-f]{6}$/i.test(item.fill) ? item.fill : "#111111"}
+            onChange={(e) => onChange({ fill: e.target.value })}
+            title="색 직접 고르기"
+            className="h-6 w-7 cursor-pointer rounded border bg-transparent p-0"
+          />
         </div>
 
         <Button
@@ -137,6 +151,9 @@ export function TextToolbar({ item, onChange, onDelete }: Props) {
           삭제
         </Button>
       </div>
+      <p className="px-1 text-[11px] text-muted-foreground">
+        모서리 핸들을 끌면 크기·회전이 바뀝니다
+      </p>
     </div>
   );
 }

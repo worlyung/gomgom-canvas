@@ -1,4 +1,10 @@
-import type { PlacedImage, PlacedText, PlacedVideo } from "@/types/canvas";
+import type {
+  PlacedImage,
+  PlacedNote,
+  PlacedShape,
+  PlacedText,
+  PlacedVideo,
+} from "@/types/canvas";
 import type { CanvasElement } from "@/lib/storage";
 
 export interface Viewport {
@@ -45,6 +51,33 @@ export const textToCanvasElement = (t: PlacedText): CanvasElement => ({
   bold: t.bold,
   align: t.align,
   stroke: t.stroke,
+});
+
+// 도형 → 저장 형식
+export const shapeToCanvasElement = (sp: PlacedShape): CanvasElement => ({
+  id: sp.id,
+  type: "shape",
+  transform: { x: sp.x, y: sp.y, scale: 1, rotation: sp.rotation },
+  zIndex: 0,
+  width: sp.width,
+  height: sp.height,
+  kind: sp.kind,
+  fill: sp.fill,
+  stroke: sp.stroke,
+  strokeWidth: sp.strokeWidth,
+  opacity: sp.opacity,
+});
+
+// 메모 → 저장 형식
+export const noteToCanvasElement = (n: PlacedNote): CanvasElement => ({
+  id: n.id,
+  type: "note",
+  transform: { x: n.x, y: n.y, scale: 1, rotation: 0 },
+  zIndex: 0,
+  width: n.width,
+  text: n.text,
+  color: n.color,
+  done: n.done,
 });
 
 // Helper to convert PlacedVideo to storage format

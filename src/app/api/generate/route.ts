@@ -45,8 +45,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "프롬프트가 비었습니다" }, { status: 400 });
   }
 
-  // 투명 배경은 gpt-image-2 미지원(400) → 지원되는 gpt-image-1로 자동 전환
-  const model = transparent ? "gpt-image-1" : "gpt-image-2";
+  // gpt-image-2도 투명 배경(background=transparent)을 지원한다 (26-08-20 확인)
+  const model = "gpt-image-2";
   let resp: Response;
   if (refs.length > 0) {
     const form = new FormData();

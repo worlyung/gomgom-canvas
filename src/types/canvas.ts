@@ -30,6 +30,40 @@ export interface PlacedText {
   stroke?: string; // 테두리(밝은 배경 위 흰 글자 등)
 }
 
+// 도형 — 강조 박스·화살표 등 디자인 요소 (결과물에 함께 구워진다)
+export type ShapeKind =
+  | "rect"
+  | "ellipse"
+  | "triangle"
+  | "star"
+  | "arrow"
+  | "line";
+
+export interface PlacedShape {
+  id: string;
+  kind: ShapeKind;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  fill?: string; // 없으면 속이 빈 도형
+  stroke: string;
+  strokeWidth: number;
+  opacity: number;
+}
+
+// 메모 — 검토용 주석. 화면에만 보이고 결과물에는 구워지지 않는다.
+export interface PlacedNote {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  color: string; // 포스트잇 색
+  done?: boolean; // 처리 완료 표시
+}
+
 export interface PlacedVideo extends Omit<PlacedImage, "isGenerated"> {
   isVideo: true;
   duration: number;

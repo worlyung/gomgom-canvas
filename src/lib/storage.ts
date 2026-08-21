@@ -22,7 +22,7 @@ interface ImageTransform {
 
 interface CanvasElement {
   id: string;
-  type: "image" | "text" | "shape" | "video";
+  type: "image" | "text" | "shape" | "video" | "note";
   imageId?: string; // Reference to IndexedDB image
   videoId?: string; // Reference to IndexedDB video
   transform: ImageTransform;
@@ -35,6 +35,12 @@ interface CanvasElement {
   bold?: boolean;
   align?: "left" | "center" | "right";
   stroke?: string;
+  // 도형·메모용
+  kind?: string;
+  strokeWidth?: number;
+  opacity?: number;
+  color?: string;
+  done?: boolean;
   zIndex: number;
   width?: number;
   height?: number;
