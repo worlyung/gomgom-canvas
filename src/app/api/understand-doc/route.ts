@@ -1,24 +1,12 @@
 // 문서(제안서 md/txt/pdf) → 포스터 프롬프트 자동 생성
 // 텍스트 추출 후 OpenAI 텍스트 모델로 요약·프롬프트화 (키는 서버 전용, generate/route.ts와 동일)
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-import os from "os";
+import { getKey } from "@/lib/server-keys";
 
 export const maxDuration = 120;
 
-let cachedKey: string | undefined;
 function getOpenAIKey(): string | undefined {
-  if (cachedKey) return cachedKey;
-  if (process.env.OPENAI_API_KEY) return (cachedKey = process.env.OPENAI_API_KEY);
-  try {
-    const envFile = fs.readFileSync(path.join(os.homedir(), ".env"), "utf8");
-    for (const line of envFile.split(/\r?\n/)) {
-      const m = line.match(/^OPENAI_API_KEY\s*=\s*["']?([^"'\s]+)["']?\s*$/);
-      if (m) return (cachedKey = m[1]);
-    }
-  } catch {}
-  return undefined;
+  return getKey("OPENAI_API_KEY_COMPANY");
 }
 
 // 모델명은 시점에 따라 다를 수 있어 후보를 순서대로 시도, 성공한 것 캐시
@@ -49,7 +37,7 @@ async function extractText(file: File): Promise<string> {
 export async function POST(req: NextRequest) {
   const key = getOpenAIKey();
   if (!key) {
-    return NextResponse.json({ error: "OPENAI_API_KEY 없음 (~/.env 확인)" }, { status: 500 });
+    return NextResponse.json({ error: "OPENAI_API_KEY_COMPANY 없음 (.env 확인)" }, { status: 500 });
   }
 
   const form = await req.formData();

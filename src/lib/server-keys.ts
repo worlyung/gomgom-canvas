@@ -1,11 +1,12 @@
 // 서버 전용 키 보관 — 브라우저에는 키 값을 절대 내려보내지 않고 "설정됨/미설정"만 알려준다.
-// 읽는 순서: 프로세스 환경변수 → 프로젝트 .env.local → 사용자 홈 .env
+// 읽는 순서: 프로젝트 .env.local → 프로젝트 .env → 프로세스 환경변수 → 사용자 홈 .env
 import "server-only";
 import fs from "fs";
 import path from "path";
 import os from "os";
 
 const LOCAL_ENV = path.join(process.cwd(), ".env.local");
+const PROJECT_ENV = path.join(process.cwd(), ".env");
 const HOME_ENV = path.join(os.homedir(), ".env");
 
 function readFromFile(file: string, name: string): string | undefined {
@@ -22,7 +23,7 @@ function readFromFile(file: string, name: string): string | undefined {
 
 export function getKey(name: string): string | undefined {
   return (
-    process.env[name] || readFromFile(LOCAL_ENV, name) || readFromFile(HOME_ENV, name)
+    readFromFile(LOCAL_ENV, name) || readFromFile(PROJECT_ENV, name) || process.env[name] || readFromFile(HOME_ENV, name)
   );
 }
 

@@ -2716,7 +2716,7 @@ export default function OverlayPage() {
       if (event.source !== window.opener || event.origin !== origin || event.data?.token !== token) return;
       if (event.data.type === "turdam-canvas-applied") {
         setTurdamSending(false);
-        setTurdamStatus(event.data.error || "터담에 적용했어요. 무대 스튜디오에서 확인 후 지도에 반영하세요.");
+        setTurdamStatus(event.data.error || event.data.message || "터담에 적용했어요. 무대 스튜디오에서 확인 후 지도에 반영하세요.");
       }
       if (event.data.type !== "turdam-canvas-init" || turdamLoaded.current) return;
       const {width, height, image} = event.data;

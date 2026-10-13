@@ -24,7 +24,7 @@ const SYSTEM = `너는 한국 공공 행사·브랜드 캠페인의 아트디렉
 - palette는 요청의 성격에 맞는 색을 직접 고른다.`;
 
 export async function POST(req: NextRequest) {
-  const key = getKey("OPENAI_API_KEY");
+  const key = getKey("OPENAI_API_KEY_COMPANY");
   if (!key) {
     return NextResponse.json(
       { error: "OpenAI 키가 필요합니다 (분해는 OpenAI 텍스트 모델을 씁니다)" },

@@ -25,7 +25,7 @@ export const PROVIDERS: ProviderDef[] = [
   {
     id: "openai",
     label: "OpenAI (gpt-image)",
-    envKey: "OPENAI_API_KEY",
+    envKey: "OPENAI_API_KEY_COMPANY",
     keyHint: "sk-...",
     docsUrl: "https://platform.openai.com/api-keys",
     model: "gpt-image-2.5-sunburst",

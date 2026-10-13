@@ -1,23 +1,11 @@
 // 프롬프트 업그레이더 — 대충 쓴 한 줄을 이미지 모델이 잘 알아듣는 묘사로 부풀린다
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-import os from "os";
+import { getKey } from "@/lib/server-keys";
 
 export const maxDuration = 120;
 
-let cachedKey: string | undefined;
 function getOpenAIKey(): string | undefined {
-  if (cachedKey) return cachedKey;
-  if (process.env.OPENAI_API_KEY) return (cachedKey = process.env.OPENAI_API_KEY);
-  try {
-    const envFile = fs.readFileSync(path.join(os.homedir(), ".env"), "utf8");
-    for (const line of envFile.split(/\r?\n/)) {
-      const m = line.match(/^OPENAI_API_KEY\s*=\s*["']?([^"'\s]+)["']?\s*$/);
-      if (m) return (cachedKey = m[1]);
-    }
-  } catch {}
-  return undefined;
+  return getKey("OPENAI_API_KEY_COMPANY");
 }
 
 const MODELS = ["gpt-5-mini", "gpt-5", "gpt-4.1-mini", "gpt-4o-mini"];
@@ -36,7 +24,7 @@ const SYSTEM = `너는 이미지 생성 프롬프트 전문가다. 사용자가 
 export async function POST(req: NextRequest) {
   const key = getOpenAIKey();
   if (!key) {
-    return NextResponse.json({ error: "OPENAI_API_KEY 없음" }, { status: 500 });
+    return NextResponse.json({ error: "OPENAI_API_KEY_COMPANY 없음" }, { status: 500 });
   }
 
   const { prompt, size, styleLabel, hasRefs } = await req.json();
