@@ -6,10 +6,20 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useEffect, useState } from "react";
+import {
+  listLocalFonts,
+  ensureLocalFont,
+  localFontValue,
+  familyFromValue,
+  type LocalFont,
+} from "@/lib/local-fonts";
 
 // 전부 구글 폰트(OFL) — 상업 사용 자유. 선택할 때 해당 폰트만 내려받는다.
 export const FONT_CHOICES = [
@@ -43,6 +53,17 @@ interface Props {
 }
 
 export function TextToolbar({ item, onChange, onDelete }: Props) {
+  // 이 PC 폰트 목록 (P3). 한 번만 받는다
+  const [localFonts, setLocalFonts] = useState<LocalFont[]>([]);
+  useEffect(() => {
+    listLocalFonts().then(setLocalFonts);
+  }, []);
+  // 지금 값이 목록에 없는 PC 폰트(다른 PC에서 만든 보드)여도 선택 표시가 깨지지 않게
+  const curFamily = familyFromValue(item.fontFamily);
+  const known =
+    FONT_CHOICES.some((f) => f.value === item.fontFamily) ||
+    localFonts.some((f) => localFontValue(f.family) === item.fontFamily);
+
   return (
     <div className="flex flex-col gap-2 rounded-xl border bg-background/60 p-2">
       <Textarea
@@ -55,17 +76,39 @@ export function TextToolbar({ item, onChange, onDelete }: Props) {
       <div className="flex flex-wrap items-center gap-2">
         <Select
           value={item.fontFamily}
-          onValueChange={(v) => onChange({ fontFamily: v })}
+          onValueChange={(v) => {
+            onChange({ fontFamily: v });
+            const fam = familyFromValue(v);
+            if (fam) ensureLocalFont(fam); // 내려받아지면 page 쪽에서 다시 그린다
+          }}
         >
           <SelectTrigger className="h-7 w-[124px] text-xs">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
-            {FONT_CHOICES.map((f) => (
-              <SelectItem key={f.value} value={f.value}>
-                <span style={{ fontFamily: f.value }}>{f.label}</span>
-              </SelectItem>
-            ))}
+          <SelectContent className="max-h-80">
+            <SelectGroup>
+              <SelectLabel className="text-[11px]">기본 (구글 폰트, 상업 사용 자유)</SelectLabel>
+              {FONT_CHOICES.map((f) => (
+                <SelectItem key={f.value} value={f.value}>
+                  <span style={{ fontFamily: f.value }}>{f.label}</span>
+                </SelectItem>
+              ))}
+            </SelectGroup>
+            {localFonts.length > 0 && (
+              <SelectGroup>
+                <SelectLabel className="text-[11px]">
+                  내 PC 폰트 {localFonts.length}개 · 사용권은 폰트마다 다름
+                </SelectLabel>
+                {localFonts.map((f) => (
+                  <SelectItem key={f.file} value={localFontValue(f.family)}>
+                    {f.family}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            )}
+            {!known && curFamily && (
+              <SelectItem value={item.fontFamily}>{curFamily} (이 PC에 없음)</SelectItem>
+            )}
           </SelectContent>
         </Select>
 

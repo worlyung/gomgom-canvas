@@ -1,6 +1,6 @@
 // 제공자별 실제 호출 — 결과는 모두 PNG dataURL 배열로 통일해서 돌려준다.
 import "server-only";
-import { getProvider, type ProviderId } from "@/lib/providers";
+import { getProvider, OPENAI_EDIT_MODEL, type ProviderId } from "@/lib/providers";
 import { getKey } from "@/lib/server-keys";
 
 export interface GenArgs {
@@ -12,6 +12,7 @@ export interface GenArgs {
   mask?: string;
   transparent?: boolean;
   geminiModel?: string; // 제미나이 모델 선택 (없으면 기본값)
+  openaiModel?: string; // OpenAI 생성 모델 선택 (없으면 기본값). 마스크 편집은 무시하고 2.0
 }
 
 export interface GenResult {
@@ -25,7 +26,10 @@ async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
 }
 
 async function runOpenAI(key: string, a: GenArgs): Promise<GenResult> {
-  const model = "gpt-image-2";
+  // 마스크 편집(부분수정·글자수정·전개)은 실측상 2.0이 나아 고정, 생성은 고른 모델
+  const model = a.mask
+    ? OPENAI_EDIT_MODEL
+    : a.openaiModel || getProvider("openai").model;
   let resp: Response;
   if (a.refs.length > 0) {
     const form = new FormData();

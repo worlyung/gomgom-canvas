@@ -13,6 +13,9 @@ export interface PlacedImage {
   cropY?: number;
   cropWidth?: number;
   cropHeight?: number;
+  z?: number; // 쌓임 순서 — 이미지·영상·도형·글씨가 한 줄로 공유한다 (포스터 모드 P1). 없으면 옛 순서
+  hidden?: boolean; // 숨김 — 화면에도 결과물에도 안 나온다
+  locked?: boolean; // 잠금 — 선택은 되지만 옮기거나 크기를 바꿀 수 없다
 }
 
 // 텍스트 레이어 — AI가 그린 글자와 달리 오타가 없고, 수정이 즉시·무료다
@@ -28,6 +31,9 @@ export interface PlacedText {
   rotation: number;
   align?: "left" | "center" | "right";
   stroke?: string; // 테두리(밝은 배경 위 흰 글자 등)
+  z?: number; // 쌓임 순서 (이미지·도형과 공유)
+  hidden?: boolean;
+  locked?: boolean;
 }
 
 // 도형 — 강조 박스·화살표 등 디자인 요소 (결과물에 함께 구워진다)
@@ -51,6 +57,9 @@ export interface PlacedShape {
   stroke: string;
   strokeWidth: number;
   opacity: number;
+  z?: number; // 쌓임 순서 (이미지·글씨와 공유)
+  hidden?: boolean;
+  locked?: boolean;
 }
 
 // 메모 — 검토용 주석. 화면에만 보이고 결과물에는 구워지지 않는다.
@@ -78,9 +87,24 @@ export interface PlacedVideo extends Omit<PlacedImage, "isGenerated"> {
   isLoaded?: boolean; // Whether the video has loaded its metadata
 }
 
+// 포스터 판(아트보드) — 인쇄 크기를 캔버스 위 흰 판으로 두고, 내보낼 때 이 영역만 원본 해상도로 굽는다 (P2)
+export interface Artboard {
+  x: number; // 월드 좌표 (캔버스 px = 출력 px, 1:1)
+  y: number;
+  width: number; // px = mm / 25.4 * dpi
+  height: number;
+  widthMm: number;
+  heightMm: number;
+  dpi: number;
+  name: string; // 예: "A2 세로"
+}
+
 export interface HistoryState {
   images: PlacedImage[];
   videos?: PlacedVideo[]; // Optional for backward compatibility
+  texts?: PlacedText[]; // 되돌리기가 글씨·도형·메모도 기억한다 (P1). 옛 기록엔 없을 수 있어 optional
+  shapes?: PlacedShape[];
+  notes?: PlacedNote[];
   selectedIds: string[];
 }
 

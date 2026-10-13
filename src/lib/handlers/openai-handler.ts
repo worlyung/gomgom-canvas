@@ -33,6 +33,7 @@ interface RunDeps {
   transparent?: boolean; // 투명 배경 PNG
   provider?: string; // openai | gemini | grok
   geminiModel?: string;
+  openaiModel?: string;
   canvasSize: { width: number; height: number };
   viewport: { x: number; y: number; scale: number };
   setImages: React.Dispatch<React.SetStateAction<PlacedImage[]>>;
@@ -583,6 +584,7 @@ export async function runOpenAIGeneration(deps: RunDeps) {
     transparent,
     provider,
     geminiModel,
+    openaiModel,
     canvasSize,
     viewport,
     setImages,
@@ -649,16 +651,32 @@ export async function runOpenAIGeneration(deps: RunDeps) {
         ...(transparent && { transparent: true }),
         ...(provider && { provider }),
         ...(geminiModel && { geminiModel }),
+        ...(openaiModel && { openaiModel }),
       }),
     });
     const j = await resp.json();
     if (!resp.ok) throw new Error(j.error || `HTTP ${resp.status}`);
     if (!j.images?.length) throw new Error("결과 이미지가 없습니다");
 
+    // P4 요소 뽑기: 투명으로 시켰는데 배경이 채워져 왔으면 로컬 오려내기로 보정 (무료)
+    let src: string = j.images[0];
+    if (transparent) {
+      const { hasTransparentEdge } = await import("@/lib/alpha-check");
+      if (!(await hasTransparentEdge(src))) {
+        try {
+          const { cutoutBackground } = await import("@/lib/cutout");
+          src = await cutoutBackground(src);
+          toast({ title: "배경이 남아 있어 자동으로 오려냈어요" });
+        } catch {
+          toast({ title: "배경이 남아 왔어요", description: "「✏️ 이 이미지 수정 ▸ 오려내기」로 직접 오려낼 수 있어요" });
+        }
+      }
+    }
+
     setImages((prev) =>
       prev.map((img) =>
         img.id === placeholderId
-          ? { ...img, src: j.images[0], promptHint: slugFromPrompt(prompt) }
+          ? { ...img, src, promptHint: slugFromPrompt(prompt) }
           : img,
       ),
     );

@@ -20,6 +20,7 @@ interface CanvasImageProps {
   isDraggingImage: boolean;
   isCroppingImage: boolean;
   dragStartPositions: Map<string, { x: number; y: number }>;
+  locked?: boolean; // 잠금 — 선택은 되지만 옮기거나 크기를 바꿀 수 없다 (P1)
 }
 
 export const CanvasImage: React.FC<CanvasImageProps> = ({
@@ -36,6 +37,7 @@ export const CanvasImage: React.FC<CanvasImageProps> = ({
   isDraggingImage,
   isCroppingImage,
   dragStartPositions,
+  locked,
 }) => {
   const shapeRef = useRef<Konva.Image>(null);
   const trRef = useRef<Konva.Transformer>(null);
@@ -79,7 +81,7 @@ export const CanvasImage: React.FC<CanvasImageProps> = ({
               }
             : undefined
         }
-        draggable={isDraggable}
+        draggable={isDraggable && !locked}
         onClick={onSelect}
         onTap={onSelect}
         onDblClick={onDoubleClick}
@@ -177,7 +179,7 @@ export const CanvasImage: React.FC<CanvasImageProps> = ({
         stroke={isSelected ? "#3b82f6" : isHovered ? "#3b82f6" : "transparent"}
         strokeWidth={isSelected || isHovered ? 2 : 0}
       />
-      {isSelected && selectedIds.length === 1 && (
+      {isSelected && selectedIds.length === 1 && !locked && (
         <Transformer
           ref={trRef}
           boundBoxFunc={(oldBox, newBox) => {

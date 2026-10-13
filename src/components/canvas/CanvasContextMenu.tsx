@@ -343,7 +343,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
           >
             <div className="flex items-center gap-2">
               <MoveUp className="h-4 w-4" />
-              <span>Send to Front</span>
+              <span>맨 앞으로</span>
             </div>
             <ShortcutBadge
               variant="alpha"

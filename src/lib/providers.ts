@@ -24,11 +24,11 @@ export interface ProviderDef {
 export const PROVIDERS: ProviderDef[] = [
   {
     id: "openai",
-    label: "OpenAI (gpt-image-2)",
+    label: "OpenAI (gpt-image)",
     envKey: "OPENAI_API_KEY",
     keyHint: "sk-...",
     docsUrl: "https://platform.openai.com/api-keys",
-    model: "gpt-image-2",
+    model: "gpt-image-2.5-sunburst",
     caps: {
       generate: true,
       reference: true,
@@ -71,6 +71,14 @@ export const PROVIDERS: ProviderDef[] = [
     note: "생성·참조(1장) — 부분수정·투명배경·크기지정 미지원. 품질은 low/medium만. ⚠️xAI 구독과 별개로 API 크레딧 충전 필요",
   },
 ];
+
+/** OpenAI 생성 모델 (2026-09-16 실측: 2.5는 생성이 낫고 편집은 2.0이 나음 → 마스크 편집은 항상 2.0) */
+export const OPENAI_MODELS = [
+  { value: "gpt-image-2.5-sunburst", label: "2.5 품질 (2배 요금)" },
+  { value: "gpt-image-2.5-flare", label: "2.5 빠름" },
+  { value: "gpt-image-2", label: "2.0" },
+];
+export const OPENAI_EDIT_MODEL = "gpt-image-2";
 
 /** 제미나이는 여러 이미지 모델이 있어 골라 쓴다 (실측 확인, 2026-08-20) */
 export const GEMINI_MODELS = [

@@ -51,7 +51,7 @@ export function CanvasText({
         stroke={item.stroke}
         strokeWidth={item.stroke ? Math.max(1, item.fontSize / 18) : 0}
         fillAfterStrokeEnabled
-        draggable
+        draggable={!item.locked}
         onMouseDown={(e: Konva.KonvaEventObject<MouseEvent>) => {
           e.cancelBubble = true;
           onSelect(item.id, e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey);
@@ -79,7 +79,7 @@ export function CanvasText({
           onDragEnd();
         }}
       />
-      {isSelected && (
+      {isSelected && !item.locked && (
         <Transformer
           ref={trRef}
           rotateEnabled

@@ -51,7 +51,7 @@ export function CanvasShape({
     stroke: item.stroke,
     strokeWidth: item.strokeWidth,
     opacity: item.opacity,
-    draggable: true,
+    draggable: !item.locked,
     onMouseDown: (e: Konva.KonvaEventObject<MouseEvent>) => {
       e.cancelBubble = true;
       onSelect(item.id, e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey);
@@ -105,7 +105,7 @@ export function CanvasShape({
         <Arrow {...common} points={[0, 0, w, h]} pointerLength={12} pointerWidth={12} />
       )}
       {item.kind === "line" && <Line {...common} points={[0, 0, w, h]} />}
-      {isSelected && (
+      {isSelected && !item.locked && (
         <Transformer
           ref={trRef}
           rotateEnabled

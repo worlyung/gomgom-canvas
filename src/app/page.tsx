@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { Stage, Layer, Rect, Group, Line } from "react-konva";
 import Konva from "konva";
 import { canvasStorage, type CanvasState } from "@/lib/storage";
@@ -25,6 +25,8 @@ import {
   MoonIcon,
   ExternalLink,
   History,
+  Layers,
+  Frame,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -68,6 +70,17 @@ import { NoteInlineEditor } from "@/components/note-inline-editor";
 import { ToolPalette } from "@/components/tool-palette";
 import { BoardPanel, type BoardMeta } from "@/components/board-panel";
 import { loadBoard, saveBoard } from "@/lib/board-sync";
+import { LayerPanel } from "@/components/layer-panel";
+import { ArtboardDialog } from "@/components/artboard-dialog";
+import { makeArtboard, fitArtboard, artboardFileName } from "@/lib/artboard";
+import { ensureLocalFont, familyFromValue } from "@/lib/local-fonts";
+import {
+  orderLayers,
+  moveSelected,
+  moveToIndex,
+  zMap,
+  type LayerEntry,
+} from "@/lib/layer-order";
 import {
   runCampaign,
   type CampaignPlan,
@@ -77,7 +90,7 @@ import {
   ProviderSettings,
   useProviders,
 } from "@/components/provider-settings";
-import { getProvider, GEMINI_MODELS, type ProviderId } from "@/lib/providers";
+import { getProvider, GEMINI_MODELS, OPENAI_MODELS, type ProviderId } from "@/lib/providers";
 import { CanvasVideo } from "@/components/canvas/CanvasVideo";
 import { VideoControls } from "@/components/canvas/VideoControls";
 import { ImageToVideoDialog } from "@/components/canvas/ImageToVideoDialog";
@@ -99,6 +112,7 @@ import type {
   PlacedText,
   PlacedShape,
   PlacedNote,
+  Artboard,
 } from "@/types/canvas";
 
 import {
@@ -196,6 +210,19 @@ export default function OverlayPage() {
     useProviders();
   const provider = getProvider(providerId);
   const [geminiModel, setGeminiModel] = useState(GEMINI_MODELS[0].value);
+  // OpenAI 생성 모델 — 마지막 선택을 기억한다 (편집 기능은 서버가 2.0으로 고정)
+  const [openaiModel, setOpenaiModel] = useState(() => {
+    try {
+      const v = localStorage.getItem("gomgom-openai-model");
+      if (v && OPENAI_MODELS.some((m) => m.value === v)) return v;
+    } catch {}
+    return OPENAI_MODELS[0].value;
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("gomgom-openai-model", openaiModel);
+    } catch {}
+  }, [openaiModel]);
   const [progressNote, setProgressNote] = useState("");
   const [isBaking, setIsBaking] = useState(false); // 굽는 순간엔 메모를 숨긴다
   const [customSizeOpen, setCustomSizeOpen] = useState(false);
@@ -222,6 +249,10 @@ export default function OverlayPage() {
     rect: { x: number; y: number; w: number; h: number };
   } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [layersOpen, setLayersOpen] = useState(false); // 레이어 패널 (P1)
+  const [artboard, setArtboard] = useState<Artboard | null>(null); // 포스터 판 (P2)
+  const [artboardOpen, setArtboardOpen] = useState(false);
+  const [exporting, setExporting] = useState(""); // 내보내는 중 문구
   const [cardnewsOpen, setCardnewsOpen] = useState(false);
   const [cardnewsText, setCardnewsText] = useState("");
   const [expandKey, setExpandKey] = useState(0);
@@ -1131,40 +1162,86 @@ export default function OverlayPage() {
     }
   }, [customApiKey]);
 
-  // Save state to history
+  // Save state to history — 글씨·도형·메모도 함께 기억한다 (P1: 순서 바꾼 것도 되돌리려면 필요)
   const saveToHistory = useCallback(() => {
-    const newState = {
+    const newState: HistoryState = {
       images: [...images],
       videos: [...videos],
+      texts: [...texts],
+      shapes: [...shapes],
+      notes: [...notes],
       selectedIds: [...selectedIds],
     };
     const newHistory = history.slice(0, historyIndex + 1);
     newHistory.push(newState);
     setHistory(newHistory);
     setHistoryIndex(newHistory.length - 1);
-  }, [images, videos, selectedIds, history, historyIndex]);
+  }, [images, videos, texts, shapes, notes, selectedIds, history, historyIndex]);
 
-  // Undo
+  // 기록 한 칸을 화면에 되살린다. 옛 기록(글씨·도형 없음)이면 지금 것을 그대로 둔다
+  const restoreHistory = useCallback((s: HistoryState) => {
+    setImages(s.images);
+    setVideos(s.videos || []);
+    if (s.texts) setTexts(s.texts);
+    if (s.shapes) setShapes(s.shapes);
+    if (s.notes) setNotes(s.notes);
+    setSelectedIds(s.selectedIds);
+  }, []);
+
+  // 두 기록이 같은 화면인가 (항목 객체는 바뀔 때마다 새로 만들어지므로 참조 비교로 충분)
+  const sameSnapshot = (a: HistoryState, b: HistoryState) => {
+    const eq = <T,>(x?: T[], y?: T[]) =>
+      !x || !y || (x.length === y.length && x.every((v, i) => v === y[i]));
+    return (
+      eq(a.images, b.images) &&
+      eq(a.videos, b.videos) &&
+      eq(a.texts, b.texts) &&
+      eq(a.shapes, b.shapes) &&
+      eq(a.notes, b.notes)
+    );
+  };
+
+  // Undo — 이 앱은 대부분 "행동 전"을 저장하고(추가·순서·글씨 끌기), 이미지 끌기만 "행동 후"를 저장한다.
+  // 그래서 지금 화면이 기록에 없으면(행동 전 저장) 지금 화면을 되살리기용으로 얹은 뒤 마지막 기록으로 돌아가고,
+  // 지금 화면이 곧 마지막 기록이면(행동 후 저장) 그 앞 칸으로 돌아간다. 둘 다 정확히 한 걸음이 된다.
   const undo = useCallback(() => {
-    if (historyIndex > 0) {
-      const prevState = history[historyIndex - 1];
-      setImages(prevState.images);
-      setVideos(prevState.videos || []);
-      setSelectedIds(prevState.selectedIds);
+    if (historyIndex < 0) return;
+    const live: HistoryState = {
+      images,
+      videos,
+      texts,
+      shapes,
+      notes,
+      selectedIds,
+    };
+    const top = history[historyIndex];
+    if (top && !sameSnapshot(live, top)) {
+      const kept = history.slice(0, historyIndex + 1);
+      setHistory([...kept, live]); // redo 할 수 있게 지금 화면을 뒤에 둔다
+      restoreHistory(top); // historyIndex는 그대로 — top이 이제 화면이다
+    } else if (historyIndex > 0) {
+      restoreHistory(history[historyIndex - 1]);
       setHistoryIndex(historyIndex - 1);
     }
-  }, [history, historyIndex]);
+  }, [
+    history,
+    historyIndex,
+    restoreHistory,
+    images,
+    videos,
+    texts,
+    shapes,
+    notes,
+    selectedIds,
+  ]);
 
   // Redo
   const redo = useCallback(() => {
     if (historyIndex < history.length - 1) {
-      const nextState = history[historyIndex + 1];
-      setImages(nextState.images);
-      setVideos(nextState.videos || []);
-      setSelectedIds(nextState.selectedIds);
+      restoreHistory(history[historyIndex + 1]);
       setHistoryIndex(historyIndex + 1);
     }
-  }, [history, historyIndex]);
+  }, [history, historyIndex, restoreHistory]);
 
   // Save initial state
   useEffect(() => {
@@ -1403,7 +1480,9 @@ export default function OverlayPage() {
           const img = new window.Image();
           img.crossOrigin = "anonymous"; // Enable CORS
           img.onload = () => {
-            const aspectRatio = img.width / img.height;
+            // 크기 정보 없는 SVG는 width/height가 0 → 정사각 300으로 (P4)
+            const aspectRatio =
+              img.width > 0 && img.height > 0 ? img.width / img.height : 1;
             const maxSize = 300;
             let width = maxSize;
             let height = maxSize / aspectRatio;
@@ -1948,6 +2027,7 @@ export default function OverlayPage() {
         shapes,
         notes,
         viewport,
+        artboard,
         onProgress: (m) => setBoardBusy(m),
       });
       setBoardId(meta.id);
@@ -1991,6 +2071,7 @@ export default function OverlayPage() {
       setShapes(data.shapes);
       setNotes(data.notes);
       setViewport(data.viewport);
+      setArtboard(data.artboard ?? null);
       setSelectedIds([]);
       setBoardId(b.id);
       setBoardName(data.meta.name);
@@ -2045,6 +2126,7 @@ export default function OverlayPage() {
       quality: imageQuality,
       provider: providerId,
       geminiModel,
+      openaiModel,
       startX: cx - 600,
       startY: cy - 180,
       setImages,
@@ -2241,6 +2323,7 @@ export default function OverlayPage() {
       transparent: transparentBg,
       provider: providerId,
       geminiModel,
+      openaiModel,
       canvasSize,
       viewport,
       setImages,
@@ -2432,89 +2515,410 @@ export default function OverlayPage() {
     }
   };
 
-  const sendToFront = useCallback(() => {
-    if (selectedIds.length === 0) return;
+  // ── 레이어 순서 통합 (포스터 모드 P1) ─────────────────────────────
+  // 이미지·영상·도형·글씨를 순서 번호(z) 하나로 다룬다. 아래 → 위.
+  // 예전엔 이미지끼리만 순서를 바꿀 수 있었고 글씨·도형은 늘 이미지 위에 고정이었다.
+  const orderedLayers = useMemo(
+    () => orderLayers(images, videos, shapes, texts),
+    [images, videos, shapes, texts],
+  );
 
-    saveToHistory();
-    setImages((prev) => {
-      // Get selected images in their current order
-      const selectedImages = selectedIds
-        .map((id) => prev.find((img) => img.id === id))
-        .filter(Boolean) as PlacedImage[];
+  // 새 순서를 각 배열의 z에 써넣는다 (0..N-1로 다시 매김 → 순서가 굳는다)
+  const applyLayerOrder = useCallback((entries: LayerEntry[]) => {
+    const zm = zMap(entries);
+    const stamp = <T extends { id: string; z?: number }>(arr: T[]) =>
+      arr.map((it) => (zm.has(it.id) ? { ...it, z: zm.get(it.id)! } : it));
+    setImages((prev) => stamp(prev));
+    setVideos((prev) => stamp(prev));
+    setShapes((prev) => stamp(prev));
+    setTexts((prev) => stamp(prev));
+  }, []);
 
-      // Get remaining images
-      const remainingImages = prev.filter(
-        (img) => !selectedIds.includes(img.id),
-      );
+  const reorderSelected = useCallback(
+    (mode: "front" | "back" | "forward" | "backward") => {
+      if (selectedIds.length === 0) return;
+      saveToHistory();
+      applyLayerOrder(moveSelected(orderedLayers, selectedIds, mode));
+    },
+    [selectedIds, saveToHistory, applyLayerOrder, orderedLayers],
+  );
 
-      // Place selected images at the end (top layer)
-      return [...remainingImages, ...selectedImages];
-    });
-  }, [selectedIds, saveToHistory]);
+  const sendToFront = useCallback(
+    () => reorderSelected("front"),
+    [reorderSelected],
+  );
+  const sendToBack = useCallback(
+    () => reorderSelected("back"),
+    [reorderSelected],
+  );
+  const bringForward = useCallback(
+    () => reorderSelected("forward"),
+    [reorderSelected],
+  );
+  const sendBackward = useCallback(
+    () => reorderSelected("backward"),
+    [reorderSelected],
+  );
 
-  const sendToBack = useCallback(() => {
-    if (selectedIds.length === 0) return;
+  // 레이어 패널에서 끌어다 놓기 — newIndex는 아래 기준
+  const moveLayerTo = useCallback(
+    (id: string, newIndex: number) => {
+      saveToHistory();
+      applyLayerOrder(moveToIndex(orderedLayers, id, newIndex));
+    },
+    [saveToHistory, applyLayerOrder, orderedLayers],
+  );
 
-    saveToHistory();
-    setImages((prev) => {
-      // Get selected images in their current order
-      const selectedImages = selectedIds
-        .map((id) => prev.find((img) => img.id === id))
-        .filter(Boolean) as PlacedImage[];
-
-      // Get remaining images
-      const remainingImages = prev.filter(
-        (img) => !selectedIds.includes(img.id),
-      );
-
-      // Place selected images at the beginning (bottom layer)
-      return [...selectedImages, ...remainingImages];
-    });
-  }, [selectedIds, saveToHistory]);
-
-  const bringForward = useCallback(() => {
-    if (selectedIds.length === 0) return;
-
-    saveToHistory();
-    setImages((prev) => {
-      const result = [...prev];
-
-      // Process selected images from back to front to maintain relative order
-      for (let i = result.length - 2; i >= 0; i--) {
-        if (
-          selectedIds.includes(result[i].id) &&
-          !selectedIds.includes(result[i + 1].id)
-        ) {
-          // Swap with the next image if it's not also selected
-          [result[i], result[i + 1]] = [result[i + 1], result[i]];
-        }
+  // 숨김·잠금 토글 (모든 종류 공통). 숨기면 선택도 푼다
+  const toggleLayerFlag = useCallback(
+    (id: string, flag: "hidden" | "locked") => {
+      const cur = orderedLayers.find((e) => e.id === id)?.item;
+      if (!cur) return;
+      saveToHistory();
+      const flip = <T extends { id: string; hidden?: boolean; locked?: boolean }>(
+        arr: T[],
+      ) => arr.map((it) => (it.id === id ? { ...it, [flag]: !it[flag] } : it));
+      setImages((prev) => flip(prev));
+      setVideos((prev) => flip(prev));
+      setShapes((prev) => flip(prev));
+      setTexts((prev) => flip(prev));
+      if (flag === "hidden" && !cur.hidden) {
+        setSelectedIds((prev) => prev.filter((s) => s !== id));
       }
+    },
+    [orderedLayers, saveToHistory],
+  );
 
-      return result;
+  // 패널에서 줄을 클릭해 고르기 (Shift/Ctrl = 여러 개)
+  const selectFromPanel = useCallback((id: string, additive: boolean) => {
+    setSelectedIds((prev) =>
+      additive
+        ? prev.includes(id)
+          ? prev.filter((p) => p !== id)
+          : [...prev, id]
+        : [id],
+    );
+  }, []);
+
+  // ── PC 폰트 (P3) ──────────────────────────────────────────────────
+  // 글씨가 쓰는 PC 폰트를 내려받고, 다 받아지면 캔버스 글씨를 다시 그린다 (보드 열기·새로고침에도 동작)
+  useEffect(() => {
+    const fams = new Set<string>();
+    texts.forEach((t) => {
+      const f = familyFromValue(t.fontFamily);
+      if (f) fams.add(f);
     });
-  }, [selectedIds, saveToHistory]);
+    fams.forEach((f) => ensureLocalFont(f));
+  }, [texts]);
+  useEffect(() => {
+    const redraw = () => {
+      const stage = stageRef.current;
+      if (!stage) return;
+      // 글자 폭·높이를 새 폰트로 다시 재게 한 뒤 그린다
+      stage.find(".canvas-text").forEach((n) => {
+        const t = n as Konva.Text;
+        t.text(t.text());
+      });
+      stage.batchDraw();
+    };
+    document.fonts.addEventListener("loadingdone", redraw);
+    return () => document.fonts.removeEventListener("loadingdone", redraw);
+  }, []);
 
-  const sendBackward = useCallback(() => {
-    if (selectedIds.length === 0) return;
+  // ── 포스터 판 (P2) ────────────────────────────────────────────────
+  // 판은 브라우저에도 기억해 두고(새로고침해도 유지), 보드 저장에도 같이 들어간다
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem("gomgom-artboard");
+      if (s) setArtboard(JSON.parse(s));
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      if (artboard) localStorage.setItem("gomgom-artboard", JSON.stringify(artboard));
+      else localStorage.removeItem("gomgom-artboard");
+    } catch {}
+  }, [artboard]);
 
-    saveToHistory();
-    setImages((prev) => {
-      const result = [...prev];
+  const fitToArtboard = useCallback(() => {
+    if (!artboard) return;
+    setViewport(fitArtboard(artboard, canvasSize.width, canvasSize.height));
+  }, [artboard, canvasSize.width, canvasSize.height]);
 
-      // Process selected images from front to back to maintain relative order
-      for (let i = 1; i < result.length; i++) {
-        if (
-          selectedIds.includes(result[i].id) &&
-          !selectedIds.includes(result[i - 1].id)
-        ) {
-          // Swap with the previous image if it's not also selected
-          [result[i], result[i - 1]] = [result[i - 1], result[i]];
-        }
+  const createArtboard = (widthMm: number, heightMm: number, name: string) => {
+    const cx = (canvasSize.width / 2 - viewport.x) / viewport.scale;
+    const cy = (canvasSize.height / 2 - viewport.y) / viewport.scale;
+    const ab = makeArtboard(cx, cy, widthMm, heightMm, name);
+    setArtboard(ab);
+    setViewport(fitArtboard(ab, canvasSize.width, canvasSize.height));
+    toast({
+      title: `${name} 판을 깔았어요`,
+      description: `${ab.width}×${ab.height}px (${ab.dpi}dpi). 이 안에 놓은 것만 내보내집니다`,
+    });
+  };
+
+  // 판 영역만 1:1(캔버스 px = 출력 px)로 구워 PNG로 내려받는다. 레이어는 건드리지 않는다
+  const exportArtboard = async () => {
+    const stage = stageRef.current;
+    if (!artboard || !stage) return;
+    setExporting("굽는 중… (큰 판은 수십 초)");
+    const keep = selectedIds;
+    setSelectedIds([]);
+    setIsBaking(true); // 메모·선택 표시·판 테두리·판 밖 회색을 숨긴다
+    await new Promise((r) => setTimeout(r, 150));
+    try {
+      const s = viewport.scale;
+      const raw = stage.toCanvas({
+        x: artboard.x * s + viewport.x,
+        y: artboard.y * s + viewport.y,
+        width: artboard.width * s,
+        height: artboard.height * s,
+        pixelRatio: 1 / s,
+      });
+      // 소수점 배율 때문에 1px 어긋나지 않게 정확한 크기로 옮겨 담는다
+      const out = document.createElement("canvas");
+      out.width = artboard.width;
+      out.height = artboard.height;
+      out.getContext("2d")!.drawImage(raw, 0, 0, artboard.width, artboard.height);
+      const blob: Blob | null = await new Promise((res) => out.toBlob(res, "image/png"));
+      if (!blob) throw new Error("PNG 변환 실패");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = artboardFileName(artboard);
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      toast({
+        title: "내보냈어요",
+        description: `${out.width}×${out.height}px · ${a.download}`,
+      });
+    } catch (e) {
+      toast({
+        title: "내보내기 실패",
+        description: e instanceof Error ? e.message : String(e),
+        variant: "destructive",
+      });
+    } finally {
+      setIsBaking(false);
+      setSelectedIds(keep);
+      setExporting("");
+    }
+  };
+
+  const [turdam, setTurdam] = useState<{token: string; origin: string; name: string; board: Artboard} | null>(null);
+  const turdamLoaded = useRef(false);
+  const [turdamStatus, setTurdamStatus] = useState("");
+  const [turdamSending, setTurdamSending] = useState(false);
+  useEffect(() => {
+    if (!isStorageLoaded || !window.opener) return;
+    const query = new URLSearchParams(location.search), token = query.get("turdam"), origin = query.get("origin");
+    if (!token || !origin || !/^http:\/\/(localhost|127\.0\.0\.1):8788$/.test(origin)) return;
+    const receive = (event: MessageEvent) => {
+      if (event.source !== window.opener || event.origin !== origin || event.data?.token !== token) return;
+      if (event.data.type === "turdam-canvas-applied") {
+        setTurdamSending(false);
+        setTurdamStatus(event.data.error || "터담에 적용했어요. 무대 스튜디오에서 확인 후 지도에 반영하세요.");
       }
+      if (event.data.type !== "turdam-canvas-init" || turdamLoaded.current) return;
+      const {width, height, image} = event.data;
+      if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0 || width > 40 || height > 40) return;
+      if (typeof image !== "string" || image.length > 6000000 || (image && !/^data:image\/(png|jpeg|webp);base64,/.test(image))) return;
+      turdamLoaded.current = true;
+      const name = String(event.data.name || "무대 디자인").slice(0, 80);
+      const scale = 1200 / Math.max(width, height), w = Math.max(1, Math.round(width * scale)), h = Math.max(1, Math.round(height * scale));
+      // Keep the existing canvas intact; create the new design to its right.
+      const x = Math.max(0, ...images.map(i => i.x + i.width), ...shapes.map(i => i.x + i.width), ...texts.map(i => i.x + 2000)) + 500;
+      const board: Artboard = {x, y: 0, width: w, height: h, widthMm: width * 1000, heightMm: height * 1000, dpi: w / (width * 1000 / 25.4), name};
+      const blank = document.createElement("canvas"); blank.width = w; blank.height = h;
+      const ctx = blank.getContext("2d")!; ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, w, h);
+      const id = crypto.randomUUID();
+      setImages(prev => [...prev, {id, src: image || blank.toDataURL("image/png"), x, y: 0, width: w, height: h, rotation: 0}]);
+      setSelectedIds([id]); setArtboard(board); setViewport(fitArtboard(board, canvasSize.width, canvasSize.height));
+      setGenerationSettings(prev => ({...prev, prompt: `${name} 디자인. 가로 ${width}m × 세로 ${height}m 비율에 맞춰 주세요.`}));
+      const size = normalizeSize(Math.max(256, w), Math.max(256, h)); if ("value" in size) setImageSize(size.value);
+      setTurdam({token, origin, name, board}); setTurdamStatus("판 안에 이미지·글자·도형을 배치한 뒤 적용하세요. AI 생성은 실행 버튼을 누를 때만 진행돼요.");
+    };
+    window.addEventListener("message", receive);
+    window.opener.postMessage({type: "turdam-canvas-ready", token}, origin);
+    return () => window.removeEventListener("message", receive);
+  }, [isStorageLoaded, images, shapes, texts, canvasSize.width, canvasSize.height]);
 
-      return result;
-    });
-  }, [selectedIds, saveToHistory]);
+  const applyToTurdam = async () => {
+    if (!turdam || !stageRef.current || turdamSending) return;
+    if (!window.opener || window.opener.closed) {setTurdamStatus("터담 창이 닫혔어요. 터담에서 다시 연결해 주세요."); return;}
+    setTurdamSending(true); setTurdamStatus("디자인을 보내고 있어요…");
+    const keep = selectedIds; setSelectedIds([]); setIsBaking(true);
+    try {
+      await document.fonts.ready;
+      await new Promise(resolve => setTimeout(resolve, 180));
+      const b = turdam.board, s = viewport.scale;
+      const image = stageRef.current.toDataURL({x: b.x * s + viewport.x, y: b.y * s + viewport.y, width: b.width * s, height: b.height * s, pixelRatio: 1 / s, mimeType: "image/png"});
+      window.opener.postMessage({type: "turdam-canvas-result", token: turdam.token, image}, turdam.origin);
+    } catch {setTurdamSending(false); setTurdamStatus("이미지를 보내지 못했어요. 업로드한 이미지 상태를 확인해 주세요.");}
+    finally {setIsBaking(false); setSelectedIds(keep);}
+  };
+
+  useEffect(() => {
+    if (!turdamSending) return;
+    const timer = setTimeout(() => {setTurdamSending(false); setTurdamStatus("터담 응답이 없어요. 원래 무대 스튜디오가 열려 있는지 확인해 주세요.");}, 15000);
+    return () => clearTimeout(timer);
+  }, [turdamSending]);
+
+  // ── 그리기 도우미 — 종류별 JSX를 함수로 빼서 순서대로 한 줄에 그린다 ──
+  const inView = (it: { x: number; y: number; width: number; height: number }) => {
+    // 화면 밖은 안 그린다 (성능). 예전 필터와 같은 계산
+    const buffer = 100;
+    const left = -viewport.x / viewport.scale - buffer;
+    const top = -viewport.y / viewport.scale - buffer;
+    const right = (canvasSize.width - viewport.x) / viewport.scale + buffer;
+    const bottom = (canvasSize.height - viewport.y) / viewport.scale + buffer;
+    return !(
+      it.x + it.width < left ||
+      it.x > right ||
+      it.y + it.height < top ||
+      it.y > bottom
+    );
+  };
+
+  const renderImage = (image: PlacedImage) => {
+    if (!inView(image)) return null;
+    return (
+      <CanvasImage
+        key={image.id}
+        image={image}
+        locked={image.locked}
+        isSelected={selectedIds.includes(image.id)}
+        onSelect={(e) => handleSelect(image.id, e)}
+        onChange={(newAttrs) => {
+          setImages((prev) =>
+            prev.map((img) =>
+              img.id === image.id ? { ...img, ...newAttrs } : img,
+            ),
+          );
+        }}
+        onDoubleClick={() => {
+          if (!image.locked) setCroppingImageId(image.id);
+        }}
+        onDragStart={() => {
+          // 여러 개 선택 중 하나를 끌면 선택 유지, 선택 안 된 걸 끌면 그것만 선택
+          let currentSelectedIds = selectedIds;
+          if (!selectedIds.includes(image.id)) {
+            currentSelectedIds = [image.id];
+            setSelectedIds(currentSelectedIds);
+          }
+          setIsDraggingImage(true);
+          const positions = new Map<string, { x: number; y: number }>();
+          currentSelectedIds.forEach((id) => {
+            const img = images.find((i) => i.id === id);
+            if (img) positions.set(id, { x: img.x, y: img.y });
+          });
+          setDragStartPositions(positions);
+        }}
+        onDragEnd={() => {
+          setIsDraggingImage(false);
+          saveToHistory();
+          setDragStartPositions(new Map());
+        }}
+        selectedIds={selectedIds}
+        images={images}
+        setImages={setImages}
+        isDraggingImage={isDraggingImage}
+        isCroppingImage={croppingImageId === image.id}
+        dragStartPositions={dragStartPositions}
+      />
+    );
+  };
+
+  const renderVideo = (video: PlacedVideo) => {
+    if (!inView(video)) return null;
+    return (
+      <CanvasVideo
+        key={video.id}
+        video={video}
+        isSelected={selectedIds.includes(video.id)}
+        onSelect={(e) => handleSelect(video.id, e)}
+        onChange={(newAttrs) => {
+          setVideos((prev) =>
+            prev.map((vid) =>
+              vid.id === video.id ? { ...vid, ...newAttrs } : vid,
+            ),
+          );
+        }}
+        onDragStart={() => {
+          let currentSelectedIds = selectedIds;
+          if (!selectedIds.includes(video.id)) {
+            currentSelectedIds = [video.id];
+            setSelectedIds(currentSelectedIds);
+          }
+          setIsDraggingImage(true);
+          setHiddenVideoControlsIds((prev) => new Set([...prev, video.id]));
+          const positions = new Map<string, { x: number; y: number }>();
+          currentSelectedIds.forEach((id) => {
+            const vid = videos.find((v) => v.id === id);
+            if (vid) positions.set(id, { x: vid.x, y: vid.y });
+          });
+          setDragStartPositions(positions);
+        }}
+        onDragEnd={() => {
+          setIsDraggingImage(false);
+          setHiddenVideoControlsIds((prev) => {
+            const newSet = new Set(prev);
+            newSet.delete(video.id);
+            return newSet;
+          });
+          saveToHistory();
+          setDragStartPositions(new Map());
+        }}
+        selectedIds={selectedIds}
+        videos={videos}
+        setVideos={setVideos}
+        isDraggingVideo={isDraggingImage}
+        isCroppingVideo={false}
+        dragStartPositions={dragStartPositions}
+        onResizeStart={() =>
+          setHiddenVideoControlsIds((prev) => new Set([...prev, video.id]))
+        }
+        onResizeEnd={() =>
+          setHiddenVideoControlsIds((prev) => {
+            const newSet = new Set(prev);
+            newSet.delete(video.id);
+            return newSet;
+          })
+        }
+      />
+    );
+  };
+
+  const renderShape = (sp: PlacedShape) => (
+    <CanvasShape
+      key={sp.id}
+      item={sp}
+      isSelected={selectedIds.includes(sp.id)}
+      onSelect={selectFromPanel}
+      onChange={(id, patch) =>
+        setShapes((prev) =>
+          prev.map((x) => (x.id === id ? { ...x, ...patch } : x)),
+        )
+      }
+      onDragStart={() => saveToHistory()}
+      onDragEnd={() => {}}
+    />
+  );
+
+  const renderText = (t: PlacedText) => (
+    <CanvasText
+      key={t.id}
+      item={t}
+      isSelected={selectedIds.includes(t.id)}
+      onSelect={selectFromPanel}
+      onChange={(id, patch) =>
+        setTexts((prev) =>
+          prev.map((x) => (x.id === id ? { ...x, ...patch } : x)),
+        )
+      }
+      onDragStart={() => saveToHistory()}
+      onDragEnd={() => {}}
+    />
+  );
 
   const handleIsolate = async () => {
     if (!isolateTarget || !isolateInputValue.trim() || isIsolating) {
@@ -2920,13 +3324,19 @@ export default function OverlayPage() {
       const isInputElement =
         e.target && (e.target as HTMLElement).matches("input, textarea");
 
-      // Undo/Redo
-      if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
+      // Undo/Redo — 글 입력창 안에서는 글자 되돌리기여야 하므로 캔버스 되돌리기를 건드리지 않는다
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.key === "z" &&
+        !e.shiftKey &&
+        !isInputElement
+      ) {
         e.preventDefault();
         undo();
       } else if (
         (e.metaKey || e.ctrlKey) &&
-        ((e.key === "z" && e.shiftKey) || e.key === "y")
+        ((e.key === "z" && e.shiftKey) || e.key === "y") &&
+        !isInputElement
       ) {
         e.preventDefault();
         redo();
@@ -3069,6 +3479,11 @@ export default function OverlayPage() {
       onDragEnter={(e) => e.preventDefault()}
       onDragLeave={(e) => e.preventDefault()}
     >
+      {turdam && <div role="region" aria-label="터담 디자인 연결" className="fixed top-14 left-1/2 -translate-x-1/2 z-[100] flex max-w-[90vw] flex-wrap items-center gap-3 rounded-xl border border-emerald-700 bg-[#20382c] px-4 py-3 text-white shadow-lg">
+        <div className="text-xs"><strong>{turdam.name} · 터담 연결</strong><p role="status">{turdamStatus}</p><span>설치 미리보기용 · 인쇄 원본은 별도 보관하세요.</span></div>
+        <Button className="bg-[#f2f4e9] text-[#20382c] hover:bg-white" onClick={() => {setArtboard(turdam.board); setViewport(fitArtboard(turdam.board, canvasSize.width, canvasSize.height));}}>작업 면 보기</Button>
+        <Button className="bg-[#d2e5ad] text-[#20382c] hover:bg-white" disabled={turdamSending} onClick={applyToTurdam}>터담에 적용</Button>
+      </div>}
       {/* Render streaming components for active generations */}
       {Array.from(activeGenerations.entries()).map(([imageId, generation]) => (
         <StreamingImage
@@ -3265,184 +3680,55 @@ export default function OverlayPage() {
                       {/* Selection box */}
                       <SelectionBoxComponent selectionBox={selectionBox} />
 
-                      {/* 텍스트 레이어는 항상 이미지 위 */}
-
-                      {/* Render images */}
-                      {images
-                        .filter((image) => {
-                          // Performance optimization: only render visible images
-                          const buffer = 100; // pixels buffer
-                          const viewBounds = {
-                            left: -viewport.x / viewport.scale - buffer,
-                            top: -viewport.y / viewport.scale - buffer,
-                            right:
-                              (canvasSize.width - viewport.x) / viewport.scale +
-                              buffer,
-                            bottom:
-                              (canvasSize.height - viewport.y) /
-                                viewport.scale +
-                              buffer,
-                          };
-
-                          return !(
-                            image.x + image.width < viewBounds.left ||
-                            image.x > viewBounds.right ||
-                            image.y + image.height < viewBounds.top ||
-                            image.y > viewBounds.bottom
-                          );
-                        })
-                        .map((image) => (
-                          <CanvasImage
-                            key={image.id}
-                            image={image}
-                            isSelected={selectedIds.includes(image.id)}
-                            onSelect={(e) => handleSelect(image.id, e)}
-                            onChange={(newAttrs) => {
-                              setImages((prev) =>
-                                prev.map((img) =>
-                                  img.id === image.id
-                                    ? { ...img, ...newAttrs }
-                                    : img,
-                                ),
-                              );
-                            }}
-                            onDoubleClick={() => {
-                              setCroppingImageId(image.id);
-                            }}
-                            onDragStart={() => {
-                              // If dragging a selected item in a multi-selection, keep the selection
-                              // If dragging an unselected item, select only that item
-                              let currentSelectedIds = selectedIds;
-                              if (!selectedIds.includes(image.id)) {
-                                currentSelectedIds = [image.id];
-                                setSelectedIds(currentSelectedIds);
-                              }
-
-                              setIsDraggingImage(true);
-                              // Save positions of all selected items
-                              const positions = new Map<
-                                string,
-                                { x: number; y: number }
-                              >();
-                              currentSelectedIds.forEach((id) => {
-                                const img = images.find((i) => i.id === id);
-                                if (img) {
-                                  positions.set(id, { x: img.x, y: img.y });
-                                }
-                              });
-                              setDragStartPositions(positions);
-                            }}
-                            onDragEnd={() => {
-                              setIsDraggingImage(false);
-                              saveToHistory();
-                              setDragStartPositions(new Map());
-                            }}
-                            selectedIds={selectedIds}
-                            images={images}
-                            setImages={setImages}
-                            isDraggingImage={isDraggingImage}
-                            isCroppingImage={croppingImageId === image.id}
-                            dragStartPositions={dragStartPositions}
+                      {/* 포스터 판 (P2) — 흰 판 + 판 밖은 옅은 회색. 굽는 동안엔 흰 판만 남긴다 */}
+                      {artboard && (
+                        <>
+                          {!isBaking &&
+                            (
+                              [
+                                [-1e6, -1e6, 2e6, 1e6 + artboard.y],
+                                [-1e6, artboard.y + artboard.height, 2e6, 1e6],
+                                [-1e6, artboard.y, 1e6 + artboard.x, artboard.height],
+                                [artboard.x + artboard.width, artboard.y, 1e6, artboard.height],
+                              ] as [number, number, number, number][]
+                            ).map(([x, y, w, h], i) => (
+                              <Rect
+                                key={`ab-dim-${i}`}
+                                x={x}
+                                y={y}
+                                width={w}
+                                height={h}
+                                fill="rgba(60,60,70,0.10)"
+                                listening={false}
+                              />
+                            ))}
+                          <Rect
+                            x={artboard.x}
+                            y={artboard.y}
+                            width={artboard.width}
+                            height={artboard.height}
+                            fill="#ffffff"
+                            stroke={isBaking ? undefined : "#94a3b8"}
+                            strokeWidth={isBaking ? 0 : 2 / viewport.scale}
+                            listening={false}
                           />
-                        ))}
+                        </>
+                      )}
 
-                      {/* Render videos */}
-                      {videos
-                        .filter((video) => {
-                          // Performance optimization: only render visible videos
-                          const buffer = 100; // pixels buffer
-                          const viewBounds = {
-                            left: -viewport.x / viewport.scale - buffer,
-                            top: -viewport.y / viewport.scale - buffer,
-                            right:
-                              (canvasSize.width - viewport.x) / viewport.scale +
-                              buffer,
-                            bottom:
-                              (canvasSize.height - viewport.y) /
-                                viewport.scale +
-                              buffer,
-                          };
+                      {/* 레이어 — 이미지·영상·도형·글씨를 순서 번호 하나로 한 줄에 그린다 (P1).
+                          숨긴 것은 화면에도 결과물에도 안 나온다 */}
+                      {orderedLayers.map((entry) => {
+                        if (entry.item.hidden) return null;
+                        if (entry.kind === "image")
+                          return renderImage(entry.item as PlacedImage);
+                        if (entry.kind === "video")
+                          return renderVideo(entry.item as PlacedVideo);
+                        if (entry.kind === "shape")
+                          return renderShape(entry.item as PlacedShape);
+                        return renderText(entry.item as PlacedText);
+                      })}
 
-                          return !(
-                            video.x + video.width < viewBounds.left ||
-                            video.x > viewBounds.right ||
-                            video.y + video.height < viewBounds.top ||
-                            video.y > viewBounds.bottom
-                          );
-                        })
-                        .map((video) => (
-                          <CanvasVideo
-                            key={video.id}
-                            video={video}
-                            isSelected={selectedIds.includes(video.id)}
-                            onSelect={(e) => handleSelect(video.id, e)}
-                            onChange={(newAttrs) => {
-                              setVideos((prev) =>
-                                prev.map((vid) =>
-                                  vid.id === video.id
-                                    ? { ...vid, ...newAttrs }
-                                    : vid,
-                                ),
-                              );
-                            }}
-                            onDragStart={() => {
-                              // If dragging a selected item in a multi-selection, keep the selection
-                              // If dragging an unselected item, select only that item
-                              let currentSelectedIds = selectedIds;
-                              if (!selectedIds.includes(video.id)) {
-                                currentSelectedIds = [video.id];
-                                setSelectedIds(currentSelectedIds);
-                              }
-
-                              setIsDraggingImage(true);
-                              // Hide video controls during drag
-                              setHiddenVideoControlsIds(
-                                (prev) => new Set([...prev, video.id]),
-                              );
-                              // Save positions of all selected items
-                              const positions = new Map<
-                                string,
-                                { x: number; y: number }
-                              >();
-                              currentSelectedIds.forEach((id) => {
-                                const vid = videos.find((v) => v.id === id);
-                                if (vid) {
-                                  positions.set(id, { x: vid.x, y: vid.y });
-                                }
-                              });
-                              setDragStartPositions(positions);
-                            }}
-                            onDragEnd={() => {
-                              setIsDraggingImage(false);
-                              // Show video controls after drag ends
-                              setHiddenVideoControlsIds((prev) => {
-                                const newSet = new Set(prev);
-                                newSet.delete(video.id);
-                                return newSet;
-                              });
-                              saveToHistory();
-                              setDragStartPositions(new Map());
-                            }}
-                            selectedIds={selectedIds}
-                            videos={videos}
-                            setVideos={setVideos}
-                            isDraggingVideo={isDraggingImage}
-                            isCroppingVideo={false}
-                            dragStartPositions={dragStartPositions}
-                            onResizeStart={() =>
-                              setHiddenVideoControlsIds(
-                                (prev) => new Set([...prev, video.id]),
-                              )
-                            }
-                            onResizeEnd={() =>
-                              setHiddenVideoControlsIds((prev) => {
-                                const newSet = new Set(prev);
-                                newSet.delete(video.id);
-                                return newSet;
-                              })
-                            }
-                          />
-                        ))}
+                      {/* (영상은 위 레이어 루프에서 함께 그린다) */}
 
                       {/* Crop overlay */}
                       {croppingImageId &&
@@ -3522,59 +3808,7 @@ export default function OverlayPage() {
                             />
                           );
                         })()}
-                      {/* 도형 레이어 (이미지 위, 텍스트 아래) */}
-                      {shapes.map((sp) => (
-                        <CanvasShape
-                          key={sp.id}
-                          item={sp}
-                          isSelected={selectedIds.includes(sp.id)}
-                          onSelect={(id, additive) =>
-                            setSelectedIds((prev) =>
-                              additive
-                                ? prev.includes(id)
-                                  ? prev.filter((p) => p !== id)
-                                  : [...prev, id]
-                                : [id],
-                            )
-                          }
-                          onChange={(id, patch) =>
-                            setShapes((prev) =>
-                              prev.map((x) =>
-                                x.id === id ? { ...x, ...patch } : x,
-                              ),
-                            )
-                          }
-                          onDragStart={() => saveToHistory()}
-                          onDragEnd={() => {}}
-                        />
-                      ))}
-
-                      {/* 텍스트 레이어 (이미지 위) */}
-                      {texts.map((t) => (
-                        <CanvasText
-                          key={t.id}
-                          item={t}
-                          isSelected={selectedIds.includes(t.id)}
-                          onSelect={(id, additive) =>
-                            setSelectedIds((prev) =>
-                              additive
-                                ? prev.includes(id)
-                                  ? prev.filter((p) => p !== id)
-                                  : [...prev, id]
-                                : [id],
-                            )
-                          }
-                          onChange={(id, patch) =>
-                            setTexts((prev) =>
-                              prev.map((x) =>
-                                x.id === id ? { ...x, ...patch } : x,
-                              ),
-                            )
-                          }
-                          onDragStart={() => saveToHistory()}
-                          onDragEnd={() => {}}
-                        />
-                      ))}
+                      {/* (도형·글씨는 위 레이어 루프에서 순서대로 그린다 — 더는 이미지 위에 고정이 아니다) */}
 
                       {/* 메모 — 항상 맨 위, 굽기에서는 제외 */}
                       {!isBaking &&
@@ -3856,7 +4090,10 @@ export default function OverlayPage() {
                           <Button
                             variant="secondary"
                             size="icon-sm"
-                            onClick={() => setHistoryOpen((v) => !v)}
+                            onClick={() => {
+                              setHistoryOpen((v) => !v);
+                              setLayersOpen(false); // 같은 자리를 쓰므로 하나만 연다
+                            }}
                             title="생성 이력"
                           >
                             <History className="h-3.5 w-3.5" />
@@ -3864,6 +4101,51 @@ export default function OverlayPage() {
                         </TooltipTrigger>
                         <TooltipContent>
                           <span>생성 이력</span>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
+                    {/* 레이어 패널 (포스터 모드 P1) */}
+                    <TooltipProvider>
+                      <Tooltip delayDuration={0}>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={layersOpen ? "default" : "secondary"}
+                            size="icon-sm"
+                            onClick={() => {
+                              setLayersOpen((v) => !v);
+                              setHistoryOpen(false);
+                            }}
+                            title="레이어"
+                          >
+                            <Layers className="h-3.5 w-3.5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <span>레이어 — 순서·숨김·잠금</span>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
+                    {/* 포스터 판 (P2) */}
+                    <TooltipProvider>
+                      <Tooltip delayDuration={0}>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={artboard ? "default" : "secondary"}
+                            size="icon-sm"
+                            onClick={() => setArtboardOpen(true)}
+                            title="포스터 판"
+                          >
+                            <Frame className="h-3.5 w-3.5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <span>
+                            {artboard
+                              ? `포스터 판 — ${artboard.name} · 내보내기`
+                              : "포스터 판 만들기 (인쇄 크기)"}
+                          </span>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
@@ -4114,6 +4396,23 @@ export default function OverlayPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {providerId === "openai" && (
+                    <Select value={openaiModel} onValueChange={setOpenaiModel}>
+                      <SelectTrigger
+                        className="h-7 w-[150px] text-xs"
+                        title="생성 모델. 부분수정·글자수정·전개는 실측상 더 나은 2.0으로 항상 처리"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {OPENAI_MODELS.map((m) => (
+                          <SelectItem key={m.value} value={m.value}>
+                            {m.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   {providerId === "gemini" && (
                     <Select value={geminiModel} onValueChange={setGeminiModel}>
                       <SelectTrigger className="h-7 w-[150px] text-xs">
@@ -4561,6 +4860,30 @@ export default function OverlayPage() {
                 />
               ) : null;
             })()}
+          <ArtboardDialog
+            open={artboardOpen}
+            onOpenChange={setArtboardOpen}
+            artboard={artboard}
+            exporting={exporting}
+            onCreate={createArtboard}
+            onRemove={() => {
+              setArtboard(null);
+              toast({ title: "포스터 판을 없앴어요", description: "요소들은 그대로 있습니다" });
+            }}
+            onFit={fitToArtboard}
+            onExport={exportArtboard}
+          />
+          {layersOpen && (
+            <LayerPanel
+              entries={orderedLayers}
+              selectedIds={selectedIds}
+              onSelect={selectFromPanel}
+              onToggleHidden={(id) => toggleLayerFlag(id, "hidden")}
+              onToggleLocked={(id) => toggleLayerFlag(id, "locked")}
+              onMove={moveLayerTo}
+              onClose={() => setLayersOpen(false)}
+            />
+          )}
           {historyOpen && (
             <HistoryPanel
               onApplyEntry={(e: HistoryEntry) => {

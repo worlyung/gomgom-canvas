@@ -21,6 +21,7 @@ interface Deps {
   quality: string;
   provider: string;
   geminiModel?: string;
+  openaiModel?: string;
   startX: number;
   startY: number;
   setImages: React.Dispatch<React.SetStateAction<PlacedImage[]>>;
@@ -43,6 +44,7 @@ export async function runCampaign(deps: Deps) {
     quality,
     provider,
     geminiModel,
+    openaiModel,
     startX,
     startY,
     setImages,
@@ -107,6 +109,7 @@ export async function runCampaign(deps: Deps) {
             quality,
             provider,
             ...(geminiModel && { geminiModel }),
+            ...(openaiModel && { openaiModel }),
             // 키비주얼(i=0)은 참조 없이, 나머지는 키비주얼을 참조로
             refs: keyVisual && i > 0 ? [keyVisual] : ([] as string[]),
           }),

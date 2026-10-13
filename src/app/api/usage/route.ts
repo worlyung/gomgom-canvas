@@ -9,13 +9,16 @@ const USAGE_FILE = path.join(process.cwd(), "..", "usage.jsonl");
 const RATE = { textIn: 5, imageIn: 10, imageOut: 40 };
 const KRW_PER_USD = 1400; // 대략 환산용
 
-function costOf(usage: any): number {
+function costOf(usage: any, model?: string): number {
   if (!usage) return 0;
   const textIn = usage.input_tokens_details?.text_tokens || 0;
   const imageIn = usage.input_tokens_details?.image_tokens || 0;
   const imageOut = usage.output_tokens || 0;
+  // gpt-image-2.5 는 공시가가 2.0의 2배 (2026-09 확인)
+  const mult = model?.includes("2.5") ? 2 : 1;
   return (
-    (textIn * RATE.textIn + imageIn * RATE.imageIn + imageOut * RATE.imageOut) /
+    ((textIn * RATE.textIn + imageIn * RATE.imageIn + imageOut * RATE.imageOut) *
+      mult) /
     1_000_000
   );
 }
@@ -29,7 +32,7 @@ export async function GET() {
     for (const line of lines) {
       try {
         const rec = JSON.parse(line);
-        const cost = costOf(rec.usage);
+        const cost = costOf(rec.usage, rec.model);
         total.calls++;
         total.cost += cost;
         if (new Date(rec.ts).toLocaleDateString("sv-SE") === todayStr) {

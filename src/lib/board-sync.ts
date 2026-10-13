@@ -1,5 +1,6 @@
 // 캔버스 ↔ 서버 보드 주고받기
 import type {
+  Artboard,
   PlacedImage,
   PlacedNote,
   PlacedShape,
@@ -12,6 +13,7 @@ export interface BoardState {
   shapes: PlacedShape[];
   notes: PlacedNote[];
   viewport: { x: number; y: number; scale: number };
+  artboard?: Artboard | null; // 포스터 판 (P2). 옛 보드엔 없음
 }
 
 export interface SaveArgs {
@@ -24,6 +26,7 @@ export interface SaveArgs {
   shapes: PlacedShape[];
   notes: PlacedNote[];
   viewport: { x: number; y: number; scale: number };
+  artboard?: Artboard | null;
   onProgress?: (msg: string) => void;
 }
 
@@ -61,6 +64,7 @@ export async function saveBoard(a: SaveArgs) {
     shapes: a.shapes,
     notes: a.notes,
     viewport: a.viewport,
+    artboard: a.artboard ?? null,
   };
   const resp = await fetch("/api/boards", {
     method: "POST",
@@ -103,5 +107,6 @@ export async function loadBoard(boardId: string) {
     shapes: (j.state?.shapes || []) as PlacedShape[],
     notes: (j.state?.notes || []) as PlacedNote[],
     viewport: j.state?.viewport || { x: 0, y: 0, scale: 1 },
+    artboard: (j.state?.artboard || null) as Artboard | null,
   };
 }
