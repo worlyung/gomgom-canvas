@@ -123,7 +123,7 @@ export default function RootLayout({
       <body className={`font-sans bg-background text-foreground min-h-screen`}>
         <CoreProviders>{children}</CoreProviders>
       </body>
-      <Analytics />
+      {process.env.VERCEL === "1" && <Analytics />}
     </html>
   );
 }

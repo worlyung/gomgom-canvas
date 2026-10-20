@@ -2715,7 +2715,7 @@ export default function OverlayPage() {
   useEffect(() => {
     if (!isStorageLoaded || !window.opener) return;
     const query = new URLSearchParams(location.search), token = query.get("turdam"), origin = query.get("origin");
-    if (!token || !origin || !/^http:\/\/(localhost|127\.0\.0\.1):8788$/.test(origin)) return;
+    if (!token || !origin || !/^http:\/\/(localhost|127\.0\.0\.1):(?:8788|18788)$/.test(origin)) return;
     const receive = (event: MessageEvent) => {
       if (event.source !== window.opener || event.origin !== origin || event.data?.token !== token) return;
       if (event.data.type === "turdam-canvas-applied") {
