@@ -4,6 +4,14 @@
 
 # 곰곰 캔버스 (Gomgom Canvas)
 
+## 카드뉴스 스튜디오
+
+상단 **카드뉴스 만들기**에서 사진과 글씨를 따로 편집할 수 있어요. 기존 사진 업로드·캔버스 사진 선택, 7가지 레이아웃, 카드 추가·복제·순서 변경, 편집 가능한 작업 파일 저장·열기와 1080×1350 PNG 일괄 저장을 지원해요. AI 배경은 기존 OpenAI 연결을 사용해요.
+
+Shift+클릭 다중 선택, 정렬·동일 간격·카드 중앙 배치, 드래그 안내선과 문단 정렬을 지원해요. PC 글꼴을 검색해 제목·본문마다 따로 지정할 수 있고, 사진·글씨를 분리한 편집 가능한 사본으로 캔버스에 추가할 수 있어요.
+
+[카드뉴스 사용법](docs/카드뉴스_사용법.md) · [ig-cardnews MIT 고지](public/licenses/ig-cardnews.txt)
+
 **제안서를 끌어다 놓으면 포스터가 나오는, OpenAI gpt-image-2 기반 무한 캔버스 이미지 에디터.**
 
 [fal-ai-community/infinite-kanvas](https://github.com/fal-ai-community/infinite-kanvas)(MIT)를 베이스로,

@@ -72,6 +72,8 @@ import { BoardPanel, type BoardMeta } from "@/components/board-panel";
 import { loadBoard, saveBoard } from "@/lib/board-sync";
 import { LayerPanel } from "@/components/layer-panel";
 import { ArtboardDialog } from "@/components/artboard-dialog";
+import { CardnewsStudio } from "@/components/cardnews-studio";
+import { cardLayers, CARD_W, CARD_H, type CardDeck } from "@/lib/cardnews";
 import { makeArtboard, fitArtboard, artboardFileName } from "@/lib/artboard";
 import { ensureLocalFont, familyFromValue } from "@/lib/local-fonts";
 import {
@@ -228,6 +230,8 @@ export default function OverlayPage() {
   const [customSizeOpen, setCustomSizeOpen] = useState(false);
   const [campaignOpen, setCampaignOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
+  const [cardnewsStudioOpen, setCardnewsStudioOpen] = useState(false);
+  const [cardnewsMounted, setCardnewsMounted] = useState(false);
   const [boardId, setBoardId] = useState<string | null>(null);
   const [boardName, setBoardName] = useState("");
   const [boardUpdatedAt, setBoardUpdatedAt] = useState<string | undefined>();
@@ -4783,7 +4787,25 @@ export default function OverlayPage() {
             >
               {boardId ? `📋 ${boardName}` : "📋 보드 저장·열기"}
             </button>
+            <button className="rounded-lg bg-[#203c34] px-3 py-1.5 text-xs text-white hover:bg-[#35594c]" onClick={() => {setCardnewsMounted(true);setCardnewsStudioOpen(true);}}>카드뉴스 만들기</button>
           </div>
+          {cardnewsMounted && <CardnewsStudio open={cardnewsStudioOpen} onClose={() => setCardnewsStudioOpen(false)} images={images}
+            onImport={async (deck: CardDeck) => {
+              const right = Math.max(0, ...images.map(i => i.x + i.width), ...shapes.map(s => s.x + s.width), ...texts.map(t => t.x + 1000));
+              const startX = right + 160;
+              const topZ = Math.max(0,...images.map(i=>i.z||0),...shapes.map(i=>i.z||0),...texts.map(i=>i.z||0),...videos.map(i=>i.z||0))+1;
+              const layers: Awaited<ReturnType<typeof cardLayers>>[] = [];
+              for (let i=0;i<deck.cards.length;i++) layers.push(await cardLayers(deck.cards[i],i+1,deck.cards.length,startX+i*(CARD_W+100),0,topZ+i*1000));
+              saveToHistory();
+              const addedImages=layers.flatMap(l=>l.images);
+              for (const im of addedImages) await canvasStorage.saveImage(im.src, im.id);
+              setImages(prev=>[...prev,...addedImages]);
+              setShapes(prev=>[...prev,...layers.flatMap(l=>l.shapes)]);
+              setTexts(prev=>[...prev,...layers.flatMap(l=>l.texts)]);
+              setSelectedIds([]);
+              const scale=Math.min((canvasSize.height-160)/CARD_H,(canvasSize.width-220)/CARD_W,1);
+              setViewport({x:100-startX*scale,y:80,scale:Math.max(.05,scale)});
+            }}/>}
           <UsageBadge />
           <ToolPalette
             onAddText={addTextLayer}
