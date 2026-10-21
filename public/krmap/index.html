@@ -1,0 +1,692 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>행정구역 지도 추출기</title>
+<meta name="description" content="대한민국 시도 · 시군구 · 읍면동 지도를 골라 통계로 칠하고 SVG · PNG · PPTX 로 저장합니다.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%231f2a37%27/%3E%3Cpath d=%27M9 7l8-2 5 4 1 7-3 6-6 4-5-3 1-6-3-4z%27 fill=%27%2313a07f%27/%3E%3C/svg%3E">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* 화면과 지도 글자: 프리텐다드 (SIL OFL, vendor/fonts) */
+@font-face { font-family: "Pretendard"; font-weight: 400; font-display: swap; src: url("vendor/fonts/Pretendard-Regular.subset.woff2") format("woff2"); }
+@font-face { font-family: "Pretendard"; font-weight: 500; font-display: swap; src: url("vendor/fonts/Pretendard-Medium.subset.woff2") format("woff2"); }
+@font-face { font-family: "Pretendard"; font-weight: 600; font-display: swap; src: url("vendor/fonts/Pretendard-SemiBold.subset.woff2") format("woff2"); }
+@font-face { font-family: "Pretendard"; font-weight: 700; font-display: swap; src: url("vendor/fonts/Pretendard-Bold.subset.woff2") format("woff2"); }
+/* 레이아웃: 제도판(drafting table). 위 얇은 머리줄, 왼쪽 한 장짜리 설정판(칸은 가는 선으로만 나눔), 오른쪽 모눈 깔린 작업대 위에 지도 한 장.
+   켜진 상태는 먹색, 파랑은 초점·선택 표시에만. 좁은 화면에서는 위아래로 쌓인다. */
+:root {
+  --paper: #ECEFEE;       /* 바닥 */
+  --panel: #FAFBFB;       /* 설정판 */
+  --sheet: #FFFFFF;       /* 지도 종이 (PPT 슬라이드와 같은 흰색) */
+  --ink: #17201F;
+  --muted: #5B6967;
+  --faint: #8A9694;
+  --rule: #DCE2E0;
+  --rule-strong: #C3CCC9;
+  --field: #F0F3F2;
+  --accent: #2450C4;
+  --accent-soft: #E6ECFA;
+  --on: #17201F;          /* 켜진 버튼 바탕 */
+  --on-ink: #FAFBFB;
+  --stage: #E2E6E4;       /* 작업대 */
+  --dot: #CBD3D0;         /* 작업대 모눈 */
+  --tick: #9AA5A2;        /* 재단선 */
+  --warn: #B4511E;
+  --sel: #111827;
+  --sheet-shadow: 0 1px 2px rgba(23, 32, 31, 0.06), 0 14px 36px rgba(23, 32, 31, 0.12);
+  --pop-shadow: 0 12px 32px rgba(15, 25, 24, 0.16);
+  --font-ui: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #101514; --panel: #161D1C; --sheet: #FFFFFF; --ink: #E6ECEA; --muted: #9AA8A5; --faint: #6D7A77;
+    --rule: #263130; --rule-strong: #364441; --field: #1D2625; --accent: #8EA9F3; --accent-soft: #1F2A40;
+    --on: #E6ECEA; --on-ink: #161D1C; --stage: #0B100F; --dot: #1E2827; --tick: #4D5957; --warn: #E3925F; --sel: #111827;
+    --sheet-shadow: 0 16px 40px rgba(0, 0, 0, 0.5); --pop-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #101514; --panel: #161D1C; --sheet: #FFFFFF; --ink: #E6ECEA; --muted: #9AA8A5; --faint: #6D7A77;
+  --rule: #263130; --rule-strong: #364441; --field: #1D2625; --accent: #8EA9F3; --accent-soft: #1F2A40;
+  --on: #E6ECEA; --on-ink: #161D1C; --stage: #0B100F; --dot: #1E2827; --tick: #4D5957; --warn: #E3925F; --sel: #111827;
+  --sheet-shadow: 0 16px 40px rgba(0, 0, 0, 0.5); --pop-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { min-height: 100%; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.5 var(--font-ui);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 24px;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1600px; margin: 0 auto; }
+
+/* 머리줄 */
+.top { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; justify-content: space-between; padding-block: 14px; margin-bottom: 16px; border-bottom: 1px solid var(--rule); }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.mark { width: 32px; height: 32px; border-radius: 8px; background: var(--on); color: var(--on-ink); display: grid; place-items: center; flex: none; }
+.mark svg { width: 19px; height: 19px; }
+.brand h1 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.25; }
+.brand p { margin: 0; font-size: 12px; color: var(--muted); letter-spacing: -0.01em; }
+.exports { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.tools { display: flex; gap: 2px; flex-wrap: wrap; align-items: center; }
+.sep { width: 1px; height: 20px; background: var(--rule); margin-inline: 6px; }
+.btn { border: 1px solid var(--rule-strong); background: var(--panel); color: var(--ink); font: inherit; font-weight: 600; font-size: 13px; letter-spacing: -0.01em; padding: 8px 14px; border-radius: 8px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; justify-content: center; transition: background 0.12s, border-color 0.12s, color 0.12s; }
+.btn:hover { border-color: var(--ink); }
+.btn.ghost { border-color: transparent; background: none; color: var(--muted); }
+.btn.ghost:hover { color: var(--ink); background: var(--field); }
+.btn.icon { padding: 7px; }
+.btn.icon svg { width: 18px; height: 18px; display: block; }
+.btn.primary { background: var(--on); border-color: var(--on); color: var(--on-ink); }
+.btn.primary:hover { filter: brightness(1.15); }
+.btn small { font-weight: 500; opacity: 0.65; font-size: 11.5px; }
+.btn.sm { padding: 6px 11px; font-size: 12.5px; border-radius: 7px; }
+.btn.sm.primary { padding-inline: 14px; }
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn.primary:disabled { cursor: progress; }
+.btngroup { display: inline-flex; }
+.btngroup .btn { border-radius: 0; margin-left: -1px; }
+.btngroup .btn:first-child { border-radius: 8px 0 0 8px; margin-left: 0; }
+.btngroup .btn:last-child { border-radius: 0 8px 8px 0; }
+.btngroup .btn:hover { position: relative; z-index: 1; }
+
+.app { display: grid; grid-template-columns: 352px minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .app { grid-template-columns: minmax(0, 1fr); } }
+
+/* 설정판: 한 장의 판, 칸 사이는 가는 선 */
+.panel { display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; min-width: 0; }
+.pane { display: flex; flex-direction: column; }
+.advanced-panel details { border-top:1px solid var(--rule); padding:14px 0; }
+.advanced-panel summary { cursor:pointer; font-weight:600; padding-bottom:10px; }
+.advanced-panel label { display:block; margin:10px 0; font-size:13px; }
+.advanced-panel h2 { font-size:17px; margin:0 0 8px; }
+.advanced-panel .btn { margin:4px 4px 4px 0; }
+.card { padding: 18px 18px 20px; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--rule); min-width: 0; }
+.card h2 { margin: 0 0 2px; font-size: 13px; font-weight: 700; letter-spacing: -0.01em; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.card h2 .hint { font-weight: 400; color: var(--faint); font-size: 11.5px; letter-spacing: 0; }
+.lbl { font-size: 11.5px; font-weight: 600; color: var(--muted); margin-top: 4px; letter-spacing: 0.01em; }
+.row { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.note { color: var(--muted); font-size: 12px; line-height: 1.6; margin: 0; }
+.note a { color: var(--accent); }
+
+/* 설정판 탭: 밑줄 */
+.ptabs { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--rule); position: sticky; top: env(safe-area-inset-top, 0px); z-index: 4; background: var(--panel); border-radius: 12px 12px 0 0; padding-inline: 6px; }
+.ptabs button { border: 0; background: none; color: var(--muted); font: inherit; font-weight: 600; font-size: 13.5px; letter-spacing: -0.01em; padding: 13px 4px 11px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.ptabs button:hover { color: var(--ink); }
+.ptabs button.on { color: var(--ink); border-bottom-color: var(--ink); }
+
+/* 지도 방식: 세 칸 */
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.tabs button { border: 1px solid var(--rule); background: var(--panel); color: var(--muted); font: inherit; font-weight: 600; font-size: 13px; padding: 9px 4px; border-radius: 8px; cursor: pointer; }
+.tabs button:hover { border-color: var(--rule-strong); color: var(--ink); }
+.tabs button.on { border-color: var(--on); background: var(--on); color: var(--on-ink); }
+
+/* 단추 묶음 */
+.seg { display: flex; border: 1px solid var(--rule-strong); border-radius: 8px; padding: 2px; gap: 2px; width: 100%; background: var(--panel); }
+.seg button { flex: 1; border: 0; background: none; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 500; padding: 6px 4px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+.seg button:hover { color: var(--ink); background: var(--field); }
+.seg button.on { background: var(--on); color: var(--on-ink); font-weight: 600; }
+.seg button:disabled { opacity: 0.35; cursor: default; background: none; }
+.seg button.on:disabled { background: var(--field); color: var(--muted); }
+
+.chk { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; font-size: 13px; }
+.chk input { accent-color: var(--on); margin: 0; width: 15px; height: 15px; }
+.chk .note { font-size: 11.5px; }
+input[type="range"] { accent-color: var(--on); flex: 1; min-width: 0; }
+.slider { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 10px; font-size: 12.5px; color: var(--muted); }
+
+.search { position: relative; }
+.search input { width: 100%; font: inherit; padding: 10px 12px 10px 36px; border: 1px solid var(--rule-strong); border-radius: 8px; background: var(--panel); color: var(--ink); }
+.search input::placeholder { color: var(--faint); }
+.search input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--faint); pointer-events: none; }
+.results { position: absolute; z-index: 5; left: 0; right: 0; top: calc(100% + 6px); background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; max-height: 320px; overflow-y: auto; box-shadow: var(--pop-shadow); padding: 4px; }
+.results button { display: flex; width: 100%; justify-content: space-between; gap: 8px; border: 0; background: none; color: var(--ink); text-align: left; font: inherit; padding: 7px 10px; border-radius: 6px; cursor: pointer; }
+.results button:hover, .results button.on { background: var(--accent-soft); }
+.results small { color: var(--muted); font: 11px var(--font-data); white-space: nowrap; }
+.crumbs { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; font-size: 13px; }
+.crumbs button { border: 0; background: none; padding: 2px 5px; border-radius: 5px; font: inherit; color: var(--accent); cursor: pointer; }
+.crumbs button:hover { background: var(--accent-soft); }
+.crumbs b { padding: 2px 5px; }
+.crumbs span { color: var(--faint); }
+.pickbulk { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.pickbulk select { min-width: 0; font: inherit; font-size: 13px; padding: 7px 8px; border: 1px solid var(--rule-strong); border-radius: 7px; background: var(--panel); color: var(--ink); }
+.pickbulk #pickClear { grid-column: 1 / -1; justify-self: start; }
+
+/* 색 테마 */
+.themes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.theme { border: 1px solid var(--rule); background: var(--panel); border-radius: 9px; padding: 5px; cursor: pointer; display: flex; flex-direction: column; gap: 5px; font: inherit; color: var(--ink); text-align: left; }
+.theme:hover { border-color: var(--rule-strong); }
+.theme.on { border-color: var(--on); box-shadow: inset 0 0 0 1px var(--on); }
+.theme .pv { height: 44px; border-radius: 5px; position: relative; overflow: hidden; }
+.theme .pv i { position: absolute; display: block; border-radius: 40% 55% 45% 50%; }
+.theme .pv .n1 { left: 10%; top: 18%; width: 34%; height: 62%; }
+.theme .pv .n2 { right: 10%; top: 12%; width: 32%; height: 70%; }
+.theme .pv .t { left: 34%; top: 26%; width: 34%; height: 56%; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25); }
+.theme span { font-size: 12px; font-weight: 600; padding: 0 2px 1px; }
+details.more summary { cursor: pointer; font-size: 12.5px; color: var(--muted); list-style: none; display: flex; align-items: center; gap: 6px; }
+details.more summary:hover { color: var(--ink); }
+details.more summary::-webkit-details-marker { display: none; }
+details.more summary::before { content: "›"; display: inline-block; transition: transform 0.15s; font-size: 14px; }
+details.more[open] summary::before { transform: rotate(90deg); }
+details.more[open] summary { margin-bottom: 10px; }
+.basecolor { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.colors { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.colors label { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: var(--muted); }
+.colors input { width: 100%; height: 30px; border: 1px solid var(--rule-strong); border-radius: 7px; padding: 2px; background: var(--panel); cursor: pointer; }
+
+/* 작업대: 모눈 위에 지도 한 장 */
+.stage { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+@media (max-width: 900px) { .stage { position: static; order: -1; } } /* 좁은 화면: 지도 먼저 */
+.board { background-color: var(--stage); background-image: radial-gradient(var(--dot) 1px, transparent 1.2px); background-size: 16px 16px; border: 1px solid var(--rule); border-radius: 12px; padding: 18px 20px 14px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; justify-content: space-between; }
+.title { min-width: 0; }
+.title h2 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.25; text-wrap: balance; }
+.title .meta { font: 11.5px/1.5 var(--font-data); color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; }
+.toolbar .seg { width: auto; }
+.map-controls { display:flex; flex-direction:column; gap:8px; padding:14px; margin-bottom:12px; border:1px solid var(--rule); border-radius:10px; background:var(--panel); }
+.map-control-row { display:flex; flex-wrap:wrap; align-items:center; gap:12px 20px; }
+.map-control-row .chk { min-height:32px; }
+#dokdoDialog { width:min(360px, calc(100vw - 40px)); box-sizing:border-box; border:1px solid var(--rule); border-radius:18px; padding:24px; background:var(--panel); color:var(--ink); }
+#dokdoDialog::backdrop { background:#0008; }
+#dokdoDialog h2 { margin:12px 0; }
+#dokdoArt svg { width:100%; height:210px; background:#eaf2ff; border-radius:12px; }
+.map-control-row .seg { flex:1; min-width:220px; max-width:400px; }
+.map-controls label:has(input:disabled) { opacity:.5; }
+.toolbar .seg button { padding-inline: 10px; font-variant-numeric: tabular-nums; }
+.slide { background: var(--sheet); border-radius: 2px; box-shadow: var(--sheet-shadow); padding: 3%; display: flex; align-items: center; justify-content: center; min-height: 380px; position: relative; overflow: hidden; }
+/* 네 귀퉁이 재단선 */
+.slide::before { content: ""; position: absolute; inset: 10px; pointer-events: none;
+  background:
+    linear-gradient(var(--tick), var(--tick)) left top / 14px 1px no-repeat, linear-gradient(var(--tick), var(--tick)) left top / 1px 14px no-repeat,
+    linear-gradient(var(--tick), var(--tick)) right top / 14px 1px no-repeat, linear-gradient(var(--tick), var(--tick)) right top / 1px 14px no-repeat,
+    linear-gradient(var(--tick), var(--tick)) left bottom / 14px 1px no-repeat, linear-gradient(var(--tick), var(--tick)) left bottom / 1px 14px no-repeat,
+    linear-gradient(var(--tick), var(--tick)) right bottom / 14px 1px no-repeat, linear-gradient(var(--tick), var(--tick)) right bottom / 1px 14px no-repeat; }
+.sheetcap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; font: 11px/1.4 var(--font-data); color: var(--faint); letter-spacing: 0.02em; padding-inline: 2px; }
+#map { width: 100%; display: flex; justify-content: center; }
+#map svg { width: 100%; height: clamp(360px, 60vh, 760px); display: block; }
+#map svg [data-id] { cursor: pointer; transition: opacity 0.12s; }
+#map svg [data-id]:hover { opacity: 0.8; }
+.loading { color: var(--muted); font-size: 13px; }
+.clickbar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; font-size: 12.5px; color: var(--muted); }
+.clickbar .seg { width: auto; }
+.clickbar .seg button { padding: 5px 12px; }
+
+.editbox { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px; }
+.editrow { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 13px; }
+.editrow b { font-size: 13.5px; }
+.ed { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; }
+.ed input[type="color"] { width: 38px; height: 28px; border: 1px solid var(--rule-strong); border-radius: 6px; padding: 2px; background: var(--panel); cursor: pointer; }
+.ed input[type="text"] { width: 120px; font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--rule-strong); border-radius: 6px; background: var(--panel); color: var(--ink); }
+.ed select { font: inherit; font-size: 12.5px; padding: 4px 6px; border: 1px solid var(--rule-strong); border-radius: 6px; background: var(--panel); color: var(--ink); }
+#map.editing svg [data-id] { cursor: grab; }
+#map.dragging svg [data-id] { cursor: grabbing; }
+#map.snapping { outline:2px solid #0F9F84; outline-offset:4px; }
+#map svg .sel { stroke: var(--sel); stroke-width: 3px; stroke-dasharray: 7 5; }
+#map svg .lift { opacity: 0.85; }
+
+/* 지도 아래 목록 */
+.info { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 14px 16px; }
+.info h3 { margin: 0 0 8px; font-size: 12.5px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--rule); background: var(--panel); color: var(--ink); border-radius: 6px; padding: 4px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
+.chip:hover { border-color: var(--rule-strong); background: var(--field); }
+.chip.r2 { color: var(--muted); border-style: dashed; }
+.chip small { color: var(--muted); margin-left: 4px; }
+.chip[aria-pressed="true"] { background: var(--on); border-color: var(--on); color: var(--on-ink); }
+.chip[aria-pressed="true"] small { color: inherit; opacity: 0.7; }
+.chip.sm { font-size: 12px; padding: 3px 9px; }
+.labelpick { grid-column: 1 / -1; border-top: 1px solid var(--rule); padding-top: 12px; }
+.labelpick .chips { max-height: 220px; overflow-y: auto; }
+.empty { color: var(--muted); font-size: 13px; }
+/* 슬라이드 묶음 */
+.deck { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.deckhead { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-start; justify-content: space-between; }
+.deckintro { min-width: 0; flex: 1 1 280px; }
+.deck h3 { margin: 0 0 4px; font-size: 12.5px; font-weight: 700; letter-spacing: -0.01em; }
+.decklist { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; max-height: 232px; overflow-y: auto; counter-reset: slide; }
+.decklist:empty { display: none; }
+.decklist li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 6px; align-items: center; border: 1px solid var(--rule); border-radius: 7px; padding: 4px 6px 4px 8px; font-size: 12.5px; counter-increment: slide; }
+.decklist li::before { content: counter(slide, decimal-leading-zero); font: 11px var(--font-data); color: var(--faint); font-variant-numeric: tabular-nums; }
+.decklist .open { border: 0; background: none; padding: 2px 0; font: inherit; color: var(--ink); text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.decklist .open:hover { color: var(--accent); }
+.decklist .x { border: 0; background: none; color: var(--faint); cursor: pointer; font-size: 15px; padding: 0 4px; }
+.decklist .x:hover { color: var(--ink); }
+.credit { font-size: 11.5px; color: var(--faint); line-height: 1.6; margin: 0; padding: 14px 18px 16px; }
+.credit a { color: inherit; }
+.btn:focus-visible, .seg button:focus-visible, .tabs button:focus-visible, .ptabs button:focus-visible, .theme:focus-visible, .crumbs button:focus-visible, .chip:focus-visible, .pal:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.field { width: 100%; font: inherit; font-size: 13px; padding: 8px 10px; border: 1px solid var(--rule-strong); border-radius: 7px; background: var(--panel); color: var(--ink); resize: vertical; }
+.field::placeholder { color: var(--faint); }
+.field:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+textarea.field { font-family: var(--font-data); font-size: 12px; line-height: 1.6; background: var(--field); }
+.palettes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.pal { border: 1px solid var(--rule); background: var(--panel); border-radius: 7px; padding: 4px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; font: inherit; font-size: 11px; color: var(--muted); }
+.pal:hover { border-color: var(--rule-strong); }
+.pal.on { border-color: var(--on); box-shadow: inset 0 0 0 1px var(--on); color: var(--ink); }
+.pal i { display: block; height: 12px; border-radius: 2px; }
+.datacols { display: flex; flex-direction: column; gap: 8px; }
+.field.half { width: auto; flex: 1 1 0; min-width: 0; }
+.datasrc { display: flex; flex-direction: column; gap: 8px; }
+.pinlist { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; }
+.pinrow { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; font-size: 12.5px; padding: 4px 6px; border-radius: 6px; }
+.pinrow:hover { background: var(--field); }
+.pinrow i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+.pinrow span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pinrow small { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.pinrow small.bad { color: var(--warn); }
+.pinrow .x { border: 0; background: none; color: var(--faint); cursor: pointer; }
+.groups { display: flex; flex-direction: column; gap: 6px; }
+.grp { display: grid; grid-template-columns: auto 34px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 4px 6px; border-radius: 8px; border: 1px solid transparent; }
+.grp.on { border-color: var(--on); background: var(--field); }
+.grp input[type="color"] { width: 34px; height: 26px; border: 1px solid var(--rule-strong); border-radius: 6px; padding: 2px; background: var(--panel); }
+.grp input[type="text"] { min-width: 0; font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--rule-strong); border-radius: 6px; background: var(--panel); color: var(--ink); }
+.grp small { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+.grp .x { border: 0; background: none; color: var(--faint); cursor: pointer; font-size: 15px; padding: 2px 4px; }
+.warn { color: var(--warn); }
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--on); color: var(--on-ink); padding: 9px 16px; border-radius: 8px; font-size: 13px; z-index: 20; box-shadow: var(--pop-shadow); }
+@media (max-width: 560px) {
+  .exports { width: 100%; justify-content: space-between; }
+  .btn small { display: none; }
+  .title h2 { font-size: 19px; }
+}
+@media (prefers-reduced-motion: reduce) { #map svg [data-id], details.more summary::before, .btn { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M9 2.5 6.5 6l1 3-2.5 2 1.5 3.5L5 18l3.5 3.5 4-1 2.5 1.5 3-2-1-3.5 2-3-1.5-3.5L16 6l-2-1-1-2.5z"/></svg>
+      </div>
+      <div>
+        <h1>행정구역 지도 추출기</h1>
+        <p>시도 · 시군구 · 읍면동 경계를 PPT 지도로</p>
+      </div>
+    </div>
+    <div class="exports">
+      <div class="tools">
+        <button class="btn icon ghost" id="undo" title="되돌리기 (Ctrl+Z)" aria-label="되돌리기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+        <button class="btn icon ghost" id="redo" title="다시 하기 (Ctrl+Shift+Z)" aria-label="다시 하기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+        <span class="sep" aria-hidden="true"></span>
+        <button class="btn ghost" id="saveWork" title="지금 설정을 파일로 저장">작업 저장</button>
+        <button class="btn ghost" id="loadWork" title="저장한 작업 파일 열기">불러오기</button>
+        <input type="file" id="loadFile" accept=".json,application/json" hidden>
+      </div>
+      <div class="btngroup" role="group" aria-label="그림으로 내보내기">
+        <button class="btn" id="copyImg" title="PPT에 바로 붙여넣기">이미지 복사</button>
+        <button class="btn" id="dlSvg">SVG</button>
+        <button class="btn" id="dlPng">PNG</button>
+      </div>
+      <button class="btn primary" id="dlPptx">PPTX 저장 <small>도형 편집 가능</small></button>
+    </div>
+  </header>
+
+  <div class="app">
+    <aside class="panel">
+      <nav class="ptabs" id="ptab">
+        <button data-v="region">지도 편집</button><button data-v="data">데이터</button><button data-v="pins">지점</button>
+      </nav>
+      <div class="pane" data-pane="region">
+      <section class="card">
+        <div class="tabs" id="mode">
+          <button data-v="around">주변 지역</button><button data-v="pick">직접 고르기</button><button data-v="all">전국</button>
+        </div>
+        <div class="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="q" type="search" placeholder="지역 찾기 — 대전, 유성구, 정자동" autocomplete="off" aria-label="지역 이름 검색">
+          <div class="results" id="results" hidden></div>
+        </div>
+        <div class="crumbs" id="crumbs"></div>
+      </section>
+
+      <section class="card" id="secAround">
+        <h2>주변 지역</h2>
+        <div class="seg" id="depth">
+          <button data-v="0">안 보기</button><button data-v="1">맞닿은 곳</button><button data-v="2">두 겹</button>
+        </div>
+        <span class="lbl">주변을 나눌 단위</span>
+        <div class="seg" id="nbLevel">
+          <button data-v="sido">시도</button><button data-v="si">시군구</button><button data-v="emd">읍면동</button>
+        </div>
+        <span class="lbl">고른 지역 안쪽 나누기</span>
+        <div class="seg" id="inner">
+          <button data-v="">나누지 않음</button><button data-v="si">시군구</button><button data-v="emd">읍면동</button>
+        </div>
+      </section>
+
+      <section class="card" id="secPick" hidden>
+        <h2>영역 고르기 <span class="hint">지도를 눌러 넣고 빼기</span></h2>
+        <span class="lbl">단위</span>
+        <div class="seg" id="pickLv">
+          <button data-v="sido">시도</button><button data-v="si">시군구</button><button data-v="emd">읍면동</button>
+        </div>
+        <span class="lbl">그림 범위</span>
+        <div class="seg" id="pickFit">
+          <button data-v="1">고른 영역에 맞춤</button><button data-v="0">전국 전체</button>
+        </div>
+        <div class="pickbulk">
+          <select id="pickSido" aria-label="시도 고르기"></select>
+          <button class="btn sm" id="pickAddSido">시도 전체 넣기</button>
+          <button class="btn sm" id="pickClear">모두 비우기</button>
+        </div>
+      </section>
+
+      <section class="card" id="secAll" hidden>
+        <h2>전국 지도 <span class="hint">지역을 누르면 주변 보기로</span></h2>
+        <div class="seg" id="allLv">
+          <button data-v="sido">시도</button><button data-v="si">시군구</button><button data-v="emd">읍면동</button>
+        </div>
+        <div class="datacols" id="insetBox">
+          <span class="lbl">확대 상자 <span class="note">구가 작게 몰린 곳을 오른쪽에 크게</span></span>
+          <div class="chips" id="insetList"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>기준</h2>
+        <label class="chk"><input type="checkbox" id="sido17"> 광주·전남 나눠 보기 <span class="note">(17개 시도)</span></label>
+        <label class="chk"><input type="checkbox" id="splitGu"> 일반구 나눠 보기 <span class="note">(수원시 → 장안구…)</span></label>
+      </section>
+      </div>
+
+      <div class="pane" data-pane="look" hidden>
+      <section class="card">
+        <h2 id="styleHeading">색과 스타일</h2>
+        <span class="lbl">디자인</span>
+        <div class="seg" id="look" aria-label="디자인 방식"><button data-v="flat">기본</button><button data-v="glass">유리</button><button data-v="paper">입체</button><button data-v="soft">소프트</button><button data-v="neon">네온</button></div>
+        <p class="note" id="lookNote" hidden></p>
+        <span class="lbl">색 조합</span>
+        <div class="themes" id="presets"></div>
+        <div class="basecolor">
+          <label class="ed">기준 색 하나로 <input type="color" id="baseColor" value="#3361E0" aria-label="기준 색"></label>
+          <button class="btn sm" id="baseSuggest" title="어울리는 색 조합을 차례로 보여 줍니다">추천 조합</button>
+          <label class="chk"><input type="checkbox" id="baseDark"> 어두운 바탕</label>
+        </div>
+        <p class="note">색 하나를 고르면 대상 · 주변 · 바탕 · 글자색과 데이터 색 단계까지 그 색에 맞춰 만듭니다.</p>
+        <div class="row">
+          <label class="chk"><input type="checkbox" id="shadow" checked> 고른 지역 띄우기</label>
+          <label class="chk"><input type="checkbox" id="distinct"> 이웃끼리 색 다르게</label>
+          <label class="chk"><input type="checkbox" id="fillBg"> 바탕색 채우기 <span class="note">(끄면 투명)</span></label>
+        </div>
+        <details class="more">
+          <summary>색 직접 고르기</summary>
+          <div class="colors">
+            <label id="cTargetLbl">대상<input type="color" id="cTarget"></label>
+            <label id="cNeighborLbl">주변<input type="color" id="cNeighbor"></label>
+            <label>나머지<input type="color" id="cContext"></label>
+          </div>
+        </details>
+      </section>
+
+      <section class="card">
+        <h2>배치 <span class="hint">모양은 그대로 두고 위치만</span></h2>
+        <div class="seg" id="layout">
+          <button data-v="real">실제 지도</button><button data-v="explode">벌려 놓기</button><button data-v="square">네모 타일</button><button data-v="hex">육각 타일</button>
+        </div>
+        <div class="slider" id="explodeRow"><span>벌린 간격</span><input type="range" id="explodeAmt" min="0.05" max="0.8" step="0.01" value="0.25" aria-label="벌린 간격"></div>
+        <div class="slider" id="tileGapRow"><span>칸 사이</span><input type="range" id="tileGap" min="0" max="0.35" step="0.01" value="0.1" aria-label="타일 사이 간격"></div>
+        <p class="note" id="tileNote" hidden>지역 하나를 같은 크기 칸 하나로 바꿔, 실제 위치에 가장 가깝게 놓습니다. 작은 지역도 크게 보여 데이터 비교에 좋습니다.</p>
+        <p class="note">지도 위 <b>하나씩 꾸미기</b>를 누르면 지역마다 끌어서 옮기고, 색과 이름을 따로 바꿀 수 있습니다.</p>
+        <button class="btn sm" id="resetEdits" style="align-self:flex-start">옮기고 꾸민 것 모두 되돌리기</button>
+      </section>
+
+      <section class="card">
+        <h2 id="nameHeading">이름 꾸미기</h2>
+        <p class="note">이름 표시 여부는 지도 위 ‘지역 이름’에서 바꿀 수 있습니다.</p>
+        <span class="lbl">이름 자리</span>
+        <div class="seg" id="labelPlace" aria-label="이름 자리"><button data-v="auto">지역 안</button><button data-v="side">양옆으로 모두 빼기</button></div>
+        <label class="chk" id="leadersRow"><input type="checkbox" id="leaders" checked> 안 들어가는 이름은 밖에 쓰고 선으로 잇기</label>
+        <div class="slider"><span>글자 크기</span><input type="range" id="fontScale" min="0.5" max="2" step="0.05" value="1" aria-label="글자 크기"></div>
+        <details class="more">
+          <summary>이름 · 선 세부 설정</summary>
+          <div class="row" style="flex-direction:column;align-items:flex-start;gap:8px">
+            <label class="chk"><input type="checkbox" id="subLabel" checked> 다른 시도 지역에 소속 시도 작게</label>
+            <label class="chk"><input type="checkbox" id="halo"> 글자에 흰 테두리</label>
+          </div>
+          <div class="slider" style="margin-top:8px"><span>선 굵기</span><input type="range" id="lineScale" min="0.3" max="3" step="0.1" value="1" aria-label="선 굵기"></div>
+        </details>
+      </section>
+
+      </div>
+
+      <div class="pane" data-pane="data" hidden>
+      <section class="card">
+        <h2>제목 · 출처</h2>
+        <input class="field" id="hTitle" type="text" maxlength="60" placeholder="제목 — 예: 충청권 지사 현황" aria-label="지도 제목">
+        <input class="field" id="hSub" type="text" maxlength="80" placeholder="부제 — 예: 2026년 3분기 기준" aria-label="지도 부제">
+        <label class="chk"><input type="checkbox" id="hNote"> 지도 아래에 출처 넣기</label>
+        <input class="field" id="hNoteText" type="text" maxlength="120" placeholder="데이터 출처 — 예: 통계청 KOSIS, 주민등록인구현황(DT_1B04005N)" aria-label="데이터 출처">
+      </section>
+
+      <section class="card">
+        <h2>데이터로 색칠</h2>
+        <div class="seg" id="dataSrc" aria-label="칠할 데이터">
+          <button data-v="">끄기</button><button data-v="stats">기본 통계</button><button data-v="table">내 표 · 파일</button><button data-v="pins">지점 수</button>
+        </div>
+
+        <div class="datasrc" id="srcStats" hidden>
+          <p class="note" id="statsNote"></p>
+          <div class="chips" id="statQuick"></div>
+        </div>
+
+        <div class="datasrc" id="srcTable" hidden>
+          <textarea class="field" id="dataText" rows="6" spellcheck="false" placeholder="지역	인구	청년	노인&#10;대전 유성구	360000	98000	36000&#10;공주시	100000	15000	29000&#10;&#10;첫 줄에 열 이름을 넣으면 열마다 골라 칠할 수 있습니다." aria-label="지역별 데이터"></textarea>
+          <div class="row">
+            <button class="btn sm primary" id="dataApply">색칠하기</button>
+            <button class="btn sm" id="dataFile">CSV 파일 열기</button>
+            <input type="file" id="dataFileInput" accept=".csv,.tsv,.txt,text/csv,text/plain" hidden>
+            <button class="btn sm" id="dataClear">지우기</button>
+          </div>
+          <div class="row"><span class="note">예시로 해 보기:</span>
+            <button class="btn sm" data-sample="stat">인구 통계</button><button class="btn sm" data-sample="poll">여론조사</button><button class="btn sm" data-sample="simple">값 하나</button>
+          </div>
+          <details class="more">
+            <summary>1세 단위 공식 인구 자료로 칠하기 (청년 19~34세 · 노인 65세 이상)</summary>
+            <p class="note">행정안전부 <b>연령별 인구현황</b> CSV(1세 단위)를 그대로 열면 총인구, 청년(19~34세), 노인(65세 이상), 유소년(0~14세), 비율, 노령화지수를 계산합니다. 행정기관코드로 지역을 찾고 읍면동 숫자는 시군구·시도로 더합니다.</p>
+            <p class="note">받는 곳: <a href="https://jumin.mois.go.kr/" target="_blank" rel="noopener">주민등록 인구통계</a> → 연령별 인구현황 (행정구역 '전체', 1세 단위, CSV) 또는 <a href="https://www.data.go.kr/data/15097972/fileData.do" target="_blank" rel="noopener">공공데이터포털</a></p>
+          </details>
+        </div>
+
+        <div class="datasrc" id="srcPins" hidden>
+          <p class="note">'지점' 탭에서 찍은 핀이 지역마다 몇 개인지 세어 칠합니다.</p>
+        </div>
+
+        <p class="note" id="dataReport"></p>
+        <div class="datacols" id="dataCols" hidden>
+          <span class="lbl">색칠 기준</span>
+          <select class="field" id="dataBy" aria-label="색칠 기준"></select>
+          <div class="row" id="ratioRow" hidden>
+            <select class="field half" id="ratioA" aria-label="나눌 값"></select><span>÷</span><select class="field half" id="ratioB" aria-label="나누는 값"></select><span class="note">× 100</span>
+          </div>
+          <div id="winRow" hidden><span class="lbl">1위를 겨룰 항목</span><div class="chips" id="winCols"></div></div>
+          <span class="lbl">이름 아래 보일 값 <span class="note">(3개까지)</span></span>
+          <div class="chips" id="labelCols"></div>
+        </div>
+        <div class="datacols" id="dataLook" hidden>
+          <span class="lbl">나타내는 법</span>
+          <div class="seg" id="dataSymbol" aria-label="나타내는 법"><button data-v="fill">면 색</button><button data-v="bubble">원 크기</button></div>
+          <p class="note" id="bubbleNote">인구·매출·지점 수처럼 "개수"인 값은 원 크기가 정직합니다. 면적이 넓은 곳이 커 보이지 않습니다. 비율은 면 색이 낫습니다.</p>
+          <div class="slider" id="bubbleRow"><span>원 크기</span><input type="range" id="bubbleScale" min="0.4" max="2.5" step="0.05" value="1" aria-label="원 크기"></div>
+          <span class="lbl" id="paletteLbl">색 단계</span>
+          <div class="palettes" id="palettes"></div>
+          <div class="row">
+            <label class="ed">단계 <select id="dataSteps"><option>3</option><option>4</option><option selected>5</option><option>6</option><option>7</option></select></label>
+            <label class="ed">나누는 법 <select id="dataMethod"><option value="quantile">같은 개수씩</option><option value="equal">같은 간격</option></select></label>
+          </div>
+          <label class="chk"><input type="checkbox" id="dataValues" checked> 이름 아래 값 보이기</label>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>색 그룹 <span class="hint">그룹을 고르고 지도를 누르기</span></h2>
+        <div class="groups" id="groupList"></div>
+        <button class="btn sm" id="groupAdd" style="align-self:flex-start">+ 그룹 추가</button>
+      </section>
+
+      <section class="card">
+        <h2>범례 <span class="hint">데이터·그룹이 있으면 자동</span></h2>
+        <input class="field" id="legTitle" type="text" maxlength="30" placeholder="범례 제목 — 예: 매출(억 원)" aria-label="범례 제목">
+        <div class="seg" id="legPos" aria-label="범례 위치">
+          <button data-v="none">숨김</button><button data-v="tl">왼쪽 위</button><button data-v="tr">오른쪽 위</button><button data-v="bl">왼쪽 아래</button><button data-v="br">오른쪽 아래</button>
+        </div>
+      </section>
+      </div>
+
+      <div class="pane" data-pane="pins" hidden>
+      <section class="card">
+        <h2>지점 핀 <span class="hint">주소 또는 위도·경도</span></h2>
+        <textarea class="field" id="pinText" rows="7" spellcheck="false" placeholder="이름	주소	분류(선택)&#10;대전 본사	대전광역시 서구 둔산동 1420	본사&#10;세종 지점	36.4800, 127.2890	지점&#10;수원 매장	경기 수원시 장안구 정자동	매장" aria-label="지점 목록"></textarea>
+        <div class="row">
+          <button class="btn sm primary" id="pinApply">핀 찍기</button>
+          <button class="btn sm" id="pinFile">CSV 파일 열기</button>
+          <input type="file" id="pinFileInput" accept=".csv,.tsv,.txt,text/csv,text/plain" hidden>
+          <button class="btn sm" id="pinSample">예시</button>
+          <button class="btn sm" id="pinClear">지우기</button>
+        </div>
+        <label class="chk"><input type="checkbox" id="pinOnline" checked> 인터넷 주소 검색 쓰기 <span class="note">(OpenStreetMap)</span></label>
+        <p class="note" id="pinReport">한 줄에 지점 하나: 이름, 주소(또는 위도·경도), 분류. 엑셀에서 그대로 복사해도 됩니다. 위도·경도는 구글 지도에서 장소를 마우스 오른쪽으로 누르면 복사할 수 있습니다.</p>
+        <div class="pinlist" id="pinList"></div>
+      </section>
+      <section class="card">
+        <h2>핀 모양</h2>
+        <div class="seg" id="pinShape"><button data-v="pin">물방울</button><button data-v="dot">점</button><button data-v="square">네모</button></div>
+        <div class="row">
+          <label class="ed">색 <input type="color" id="pinColor"></label>
+          <label class="chk"><input type="checkbox" id="pinLabels" checked> 이름 보이기</label>
+          <label class="chk"><input type="checkbox" id="pinByCat" checked> 분류별 색</label>
+        </div>
+        <div class="slider"><span>핀 크기</span><input type="range" id="pinSize" min="0.5" max="2.5" step="0.05" value="1" aria-label="핀 크기"></div>
+        <button class="btn sm" id="pinCount" style="align-self:flex-start">지역별 지점 수로 칠하기</button>
+      </section>
+      </div>
+      <p class="credit" id="credit"></p>
+    </aside>
+
+    <main class="stage">
+      <div class="board">
+        <div class="toolbar">
+          <div class="title"><h2 id="title">불러오는 중…</h2><div class="meta" id="meta"></div></div>
+          <div class="seg" id="aspect" aria-label="그림 비율">
+            <button data-v="">자동</button><button data-v="1.7778">16:9</button><button data-v="1.3333">4:3</button><button data-v="1">1:1</button>
+          </div>
+        </div>
+        <section class="map-controls" aria-label="지도 표시 설정">
+          <div class="map-control-row">
+            <label class="chk"><input type="checkbox" id="backgroundRegions" aria-describedby="backgroundHelp"> 배경 지역</label>
+            <label class="chk"><input type="checkbox" id="sidoLines" aria-describedby="boundaryHelp"> 시도 경계 강조</label>
+            <label class="chk"><input type="checkbox" id="snapRegions"> 자동 붙이기</label>
+          </div>
+          <p class="note" id="backgroundHelp">배경 지역을 끄면 바깥 회색 면과 선이 함께 사라집니다.</p>
+          <p class="note" id="boundaryHelp">표시한 지역 사이의 기본 경계는 유지됩니다.</p>
+          <div class="map-control-row"><span class="lbl">지역 이름</span>
+            <div class="seg" id="labelMode" aria-label="지역 이름 표시">
+              <button data-v="all">모두 표시</button><button data-v="none">숨기기</button><button data-v="pick">직접 선택</button>
+            </div>
+          </div>
+          <p class="note" id="labelHint" hidden>지도에서 누르거나 아래 목록에서 이름을 하나씩 켜고 끕니다.</p>
+        </section>
+        <div class="map-control-row" role="group" aria-label="지도 확대 축소" style="margin-bottom:12px">
+          <button class="btn sm" id="zoomOut" aria-label="지도 축소">−</button>
+          <output id="zoomLevel" aria-live="polite">100%</output>
+          <button class="btn sm" id="zoomIn" aria-label="지도 확대">+</button>
+          <button class="btn sm" id="zoomTarget">선택 지역 맞춤</button>
+          <button class="btn sm" id="zoomFit">전체 맞춤</button>
+          <button class="btn sm" id="dokdoSecret" hidden aria-label="독도 확대 상자 열기" title="동쪽 끝에 작은 발견">작은 섬 하나 ↗</button>
+          <span class="note">화면 보기만 확대 · Ctrl/⌘ + 휠 · 흩어진 섬은 큰 섬 중심, 모든 섬은 전체 맞춤</span>
+        </div>
+        <div class="clickbar" id="clickBar">
+          <span>지도를 누르면</span>
+          <div class="seg" id="clickAction"><button data-v="main" id="clickMain">지역 고르기</button><button data-v="label">이름 넣기·빼기</button><button data-v="edit">하나씩 꾸미기</button><button data-v="group" id="clickGroup">그룹 칠하기</button></div>
+        </div>
+        <div class="editbox" id="editBox" hidden>
+          <p class="note">‘자동 붙이기’를 켜면 실제 지도·벌려 놓기에서 원래 이웃의 경계 가까이 끌 때 붙습니다(12px). Alt/Option을 누르면 자유 이동합니다.</p>
+          <p class="note" id="editEmpty">꾸밀 지역을 지도에서 누르세요. 누른 채로 끌면 그 지역만 옮겨집니다.</p>
+          <div class="editrow" id="editForm" hidden>
+            <b id="editName"></b>
+            <label class="ed">색 <input type="color" id="editFill"></label>
+            <label class="ed">이름 <input type="text" id="editText" maxlength="20"></label>
+            <label class="chk"><input type="checkbox" id="editHide"> 이름 숨기기</label>
+            <button class="btn sm" id="editReset">이 지역 원래대로</button>
+            <button class="btn sm" id="editDone">닫기</button>
+          </div>
+        </div>
+        <div class="slide" id="slide"><div id="map"><span class="loading">경계 데이터를 불러오는 중입니다…</span></div></div>
+        <div class="sheetcap" aria-hidden="true"><span>UTM-K · EPSG:5179</span><span>경계 통계청 SGIS · 2026.10.01</span></div>
+      </div>
+      <div class="info">
+        <div>
+          <h3 id="nbHead">주변 지역</h3>
+          <div class="chips" id="nbList"></div>
+        </div>
+        <div><button class="btn sm" id="copyList">목록 복사</button></div>
+        <div class="labelpick" id="labelPickBox" hidden>
+          <h3>이름 넣을 지역 <span class="note" id="labelPickCount"></span></h3>
+          <div class="chips" id="labelPickList"></div>
+        </div>
+      </div>
+      <section class="deck" id="deck" aria-label="PPT 슬라이드 묶음">
+        <div class="deckhead">
+          <div class="deckintro">
+            <h3>PPT 슬라이드 묶음 <span class="note" id="deckCount">비어 있음</span></h3>
+            <p class="note">지도를 한 장씩 담아 PPTX 하나로 저장합니다. 제목에 <b>{지역}</b>을 쓰면 장마다 그 지역 이름으로 바뀝니다.</p>
+          </div>
+          <div class="row">
+            <button class="btn sm" id="deckAdd">+ 지금 지도 담기</button>
+            <button class="btn sm" id="deckEachSido">시도마다 한 장씩</button>
+            <button class="btn sm" id="deckEachSi">이 시도의 시군구마다</button>
+          </div>
+        </div>
+        <ol class="decklist" id="deckList"></ol>
+        <div class="row" id="deckActions" hidden>
+          <button class="btn sm primary" id="deckSave">묶음 PPTX 저장</button>
+          <button class="btn sm" id="deckClear">모두 비우기</button>
+        </div>
+        <p class="note warn" id="deckWarnings" role="status" aria-live="polite" style="white-space:pre-line" hidden></p>
+      </section>
+    </main>
+  </div>
+</div>
+<footer class="note" style="text-align:center;padding:20px">유용하게 쓰셨다면 <a href="https://github.com/worlyung/krmap" target="_blank" rel="noopener noreferrer">GitHub Star로 응원해 주세요 ⭐</a>. 다음 개선을 이어가는 데 큰 힘이 됩니다.</footer>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+  window.KRMAP = { base: null, emd: null, waiting: {} };
+  function KRMAP_LOAD(name, data) {
+    window.KRMAP[name] = data;
+    (window.KRMAP.waiting[name] || []).forEach(function (f) { f(); });
+  }
+</script>
+<script src="data/base.js"></script>
+<script src="data/stats.js"></script>
+<script src="render.js"></script>
+<script src="datafill.js"></script>
+<script src="pins.js"></script>
+<script src="colors.js"></script>
+<script src="advanced.js"></script>
+<script src="state.js"></script>
+<script src="pptx.js"></script>
+<script src="advanced-ui.js"></script>
+<script src="viewport.js"></script>
+<dialog id="dokdoDialog" aria-labelledby="dokdoTitle">
+  <form method="dialog"><button class="btn sm" style="float:right" aria-label="독도 확대 상자 닫기">닫기 ×</button></form>
+  <p class="note">작은 섬을 찾으셨네요 👀</p>
+  <h2 id="dokdoTitle">안녕, 독도!</h2>
+  <div id="dokdoArt"></div>
+  <p>작아서 지나칠 뻔했죠.<br>여기, 독도도 함께 있어요.</p>
+  <p class="note">울릉군 경계 데이터의 독도 도형을 확대했습니다. 이 상자는 화면에서만 표시됩니다.</p>
+</dialog>
+<script src="dokdo.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

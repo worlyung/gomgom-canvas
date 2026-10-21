@@ -73,6 +73,7 @@ import { loadBoard, saveBoard } from "@/lib/board-sync";
 import { LayerPanel } from "@/components/layer-panel";
 import { ArtboardDialog } from "@/components/artboard-dialog";
 import { CardnewsStudio } from "@/components/cardnews-studio";
+import { MapStudio } from "@/components/map-studio";
 import { cardLayers, CARD_W, CARD_H, type CardDeck } from "@/lib/cardnews";
 import { makeArtboard, fitArtboard, artboardFileName } from "@/lib/artboard";
 import { ensureLocalFont, familyFromValue } from "@/lib/local-fonts";
@@ -231,6 +232,7 @@ export default function OverlayPage() {
   const [campaignOpen, setCampaignOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
   const [cardnewsStudioOpen, setCardnewsStudioOpen] = useState(false);
+  const [mapStudioOpen, setMapStudioOpen] = useState(false);
   const [cardnewsMounted, setCardnewsMounted] = useState(false);
   const [boardId, setBoardId] = useState<string | null>(null);
   const [boardName, setBoardName] = useState("");
@@ -4788,6 +4790,7 @@ export default function OverlayPage() {
               {boardId ? `📋 ${boardName}` : "📋 보드 저장·열기"}
             </button>
             <button className="rounded-lg bg-[#203c34] px-3 py-1.5 text-xs text-white hover:bg-[#35594c]" onClick={() => {setCardnewsMounted(true);setCardnewsStudioOpen(true);}}>카드뉴스 만들기</button>
+            <button className="rounded-lg border px-3 py-1.5 text-xs hover:bg-accent" onClick={() => setMapStudioOpen(true)}>지도 만들기</button>
           </div>
           {cardnewsMounted && <CardnewsStudio open={cardnewsStudioOpen} onClose={() => setCardnewsStudioOpen(false)} images={images}
             onImport={async (deck: CardDeck) => {
@@ -4806,6 +4809,32 @@ export default function OverlayPage() {
               const scale=Math.min((canvasSize.height-160)/CARD_H,(canvasSize.width-220)/CARD_W,1);
               setViewport({x:100-startX*scale,y:80,scale:Math.max(.05,scale)});
             }}/>}
+          <MapStudio open={mapStudioOpen} onClose={() => setMapStudioOpen(false)}
+            onImport={async (blob, name) => {
+              const src = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = () => reject(new Error("지도 이미지를 읽지 못했어요."));
+                reader.readAsDataURL(blob);
+              });
+              const dimensions = await new Promise<{width: number; height: number}>((resolve, reject) => {
+                const image = new window.Image();
+                image.onload = () => resolve({width: image.naturalWidth, height: image.naturalHeight});
+                image.onerror = () => reject(new Error("지도 이미지를 열지 못했어요."));
+                image.src = src;
+              });
+              const scale = Math.min(800 / dimensions.width, 650 / dimensions.height, 1);
+              const width = dimensions.width * scale, height = dimensions.height * scale;
+              const id = `map-${crypto.randomUUID()}`;
+              await canvasStorage.saveImage(src, id);
+              saveToHistory();
+              const z = Math.max(0, ...images.map(i=>i.z||0), ...shapes.map(i=>i.z||0), ...texts.map(i=>i.z||0), ...videos.map(i=>i.z||0)) + 1;
+              setImages(prev => [...prev, {id, src, width, height, rotation: 0, z, promptHint: name,
+                x: (canvasSize.width / 2 - viewport.x) / viewport.scale - width / 2,
+                y: (canvasSize.height / 2 - viewport.y) / viewport.scale - height / 2}]);
+              setSelectedIds([id]);
+              toast({title: "지도를 캔버스에 넣었어요"});
+            }} />
           <UsageBadge />
           <ToolPalette
             onAddText={addTextLayer}
