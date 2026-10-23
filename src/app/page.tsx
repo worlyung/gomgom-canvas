@@ -25,8 +25,6 @@ import {
   MoonIcon,
   ExternalLink,
   History,
-  Layers,
-  Frame,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -70,12 +68,14 @@ import { NoteInlineEditor } from "@/components/note-inline-editor";
 import { ToolPalette } from "@/components/tool-palette";
 import { BoardPanel, type BoardMeta } from "@/components/board-panel";
 import { loadBoard, saveBoard } from "@/lib/board-sync";
+import { StudioWorkbench } from "@/components/studio-workbench";
+import { emptyExtras, saveStudioExtras, loadStudioExtras, type StudioExtras, type StudioProject } from "@/lib/studio-project";
 import { LayerPanel } from "@/components/layer-panel";
 import { ArtboardDialog } from "@/components/artboard-dialog";
 import { CardnewsStudio } from "@/components/cardnews-studio";
 import { MapStudio } from "@/components/map-studio";
 import { cardLayers, CARD_W, CARD_H, type CardDeck } from "@/lib/cardnews";
-import { makeArtboard, fitArtboard, artboardFileName } from "@/lib/artboard";
+import { makeArtboard, fitArtboard as fitFullArtboard, artboardFileName } from "@/lib/artboard";
 import { ensureLocalFont, familyFromValue } from "@/lib/local-fonts";
 import {
   orderLayers,
@@ -88,7 +88,8 @@ import {
   runCampaign,
   type CampaignPlan,
 } from "@/lib/handlers/campaign-handler";
-import { SIZE_PRESETS, normalizeSize } from "@/lib/image-sizes";
+import { normalizeSize, promptImageSize, sizeForAspect } from "@/lib/image-sizes";
+import { checkExportSize, pngWithDpi, renderSelectedImage, loadOutputImage } from "@/lib/canvas-output";
 import {
   ProviderSettings,
   useProviders,
@@ -182,6 +183,15 @@ import { Switch } from "@/components/ui/switch";
 import { GithubBadge } from "@/components/canvas/GithubBadge";
 import { GenerationsIndicator } from "@/components/generations-indicator";
 
+function fitArtboard(board: Artboard, width: number, height: number) {
+  const left = width >= 768 ? 348 : 0;
+  const right = width >= 1100 ? 280 : 0;
+  const top = 160;
+  const bottom = width >= 768 ? 60 : height * .48;
+  const frame = fitFullArtboard(board, Math.max(160,width-left-right), Math.max(160,height-top-bottom));
+  return {...frame,x:frame.x+left,y:frame.y+top};
+}
+
 export default function OverlayPage() {
   const { theme, setTheme, resolvedTheme } = useTheme();
   const [images, setImages] = useState<PlacedImage[]>([]);
@@ -231,6 +241,12 @@ export default function OverlayPage() {
   const [customSizeOpen, setCustomSizeOpen] = useState(false);
   const [campaignOpen, setCampaignOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
+  const [workbenchOpen,setWorkbenchOpen]=useState(false);
+  const [videoMode,setVideoMode]=useState(false);
+  const [studioExtras,setStudioExtras]=useState<StudioExtras>(emptyExtras);
+  const [extrasLoaded,setExtrasLoaded]=useState(false);
+  useEffect(()=>{loadStudioExtras().then(data=>{if(data){setStudioExtras(data);setGenerationSettings(s=>({...s,prompt:data.settings.prompt}));setImageSize(data.settings.size);setImageQuality(data.settings.quality);if(["openai","gemini","grok"].includes(data.settings.provider))setProviderId(data.settings.provider as ProviderId);if(data.settings.provider==="gemini")setGeminiModel(data.settings.model);else if(data.settings.model)setOpenaiModel(data.settings.model);}}).catch(()=>toast({title:"행사 자료 복구 실패",variant:"destructive"})).finally(()=>setExtrasLoaded(true));},[]);
+  useEffect(()=>{if(extrasLoaded)saveStudioExtras({...studioExtras,settings:{prompt:generationSettings.prompt,provider:providerId,model:providerId==="gemini"?geminiModel:openaiModel,size:imageSize,quality:imageQuality}}).catch(()=>toast({title:"행사 자료 자동 저장 실패",description:"프로젝트 파일로 내보내 주세요",variant:"destructive"}));},[studioExtras,extrasLoaded,generationSettings.prompt,providerId,geminiModel,openaiModel,imageSize,imageQuality]);
   const [cardnewsStudioOpen, setCardnewsStudioOpen] = useState(false);
   const [mapStudioOpen, setMapStudioOpen] = useState(false);
   const [cardnewsMounted, setCardnewsMounted] = useState(false);
@@ -307,7 +323,11 @@ export default function OverlayPage() {
   const [isIsolating, setIsIsolating] = useState(false);
   const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
-  const [showMinimap, setShowMinimap] = useState(true);
+  const [showMinimap, setShowMinimap] = useState(false);
+  const [variantCount, setVariantCount] = useState(1);
+  const [exactCopy, setExactCopy] = useState("");
+  const [referenceKeep, setReferenceKeep] = useState("");
+  const [usageOpen, setUsageOpen] = useState(false);
   const [isStyleDialogOpen, setIsStyleDialogOpen] = useState(false);
   const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
   const [isImageToVideoDialogOpen, setIsImageToVideoDialogOpen] =
@@ -339,7 +359,9 @@ export default function OverlayPage() {
     useState(false);
   const [customApiKey, setCustomApiKey] = useState<string>("");
   const [tempApiKey, setTempApiKey] = useState<string>("");
-  const [_, setIsSaving] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const saveRevision = useRef(0);
   const [showSuccess, setShowSuccess] = useState(false);
 
   // Touch event states for mobile
@@ -911,6 +933,7 @@ export default function OverlayPage() {
 
   // Save current state to storage
   const saveToStorage = useCallback(async () => {
+    const revision = ++saveRevision.current;
     try {
       setIsSaving(true);
 
@@ -927,7 +950,6 @@ export default function OverlayPage() {
         lastModified: Date.now(),
         viewport: viewport,
       };
-      canvasStorage.saveCanvasState(canvasState);
 
       // Save actual image data to IndexedDB
       for (const image of images) {
@@ -942,7 +964,7 @@ export default function OverlayPage() {
 
         // Check if we already have this image stored
         const existingImage = await canvasStorage.getImage(image.id);
-        if (!existingImage) {
+        if (!existingImage || existingImage.originalDataUrl !== image.src) {
           await canvasStorage.saveImage(image.src, image.id);
         }
       }
@@ -962,13 +984,17 @@ export default function OverlayPage() {
         }
       }
 
-      // Clean up unused images and videos
-      await canvasStorage.cleanupOldData();
+      // Commit only after media is durable. Keep removed media for undo/recovery.
+      if (revision !== saveRevision.current) return;
+      canvasStorage.saveCanvasState(canvasState);
+      setSaveError(false);
 
       // Brief delay to show the indicator
-      setTimeout(() => setIsSaving(false), 300);
+      setIsSaving(false);
     } catch (error) {
       console.error("Failed to save to storage:", error);
+      setSaveError(true);
+      toast({ title: "자동 저장에 실패했어요", description: "이 창을 닫지 말고 보드 저장·열기에서 작업을 저장해 주세요. 기존 이미지는 삭제하지 않았어요.", variant: "destructive" });
       setIsSaving(false);
     }
   }, [images, videos, texts, shapes, notes, viewport]);
@@ -992,6 +1018,7 @@ export default function OverlayPage() {
         if (element.type === "shape") {
           restoredShapes.push({
             id: element.id,
+              hidden:element.hidden,locked:element.locked,z:element.zIndex,
             kind: (element.kind || "rect") as PlacedShape["kind"],
             x: element.transform.x,
             y: element.transform.y,
@@ -1022,6 +1049,7 @@ export default function OverlayPage() {
         if (element.type === "text") {
           restoredTexts.push({
             id: element.id,
+              hidden:element.hidden,locked:element.locked,z:element.zIndex,
             text: element.text || "",
             x: element.transform.x,
             y: element.transform.y,
@@ -1040,8 +1068,10 @@ export default function OverlayPage() {
           if (imageData) {
             loadedImages.push({
               id: element.id,
+              hidden:element.hidden,locked:element.locked,z:element.zIndex,
               src: imageData.originalDataUrl,
               ...(element.promptHint && { promptHint: element.promptHint }),
+              generation:element.generation,
               x: element.transform.x,
               y: element.transform.y,
               width: element.width || 300,
@@ -1060,6 +1090,7 @@ export default function OverlayPage() {
           if (videoData) {
             loadedVideos.push({
               id: element.id,
+              hidden:element.hidden,locked:element.locked,z:element.zIndex,
               src: videoData.originalDataUrl,
               x: element.transform.x,
               y: element.transform.y,
@@ -2034,6 +2065,8 @@ export default function OverlayPage() {
         notes,
         viewport,
         artboard,
+        videos,
+        extras: {...studioExtras,settings:{prompt:generationSettings.prompt,provider:providerId,model:providerId==="gemini"?geminiModel:openaiModel,size:imageSize,quality:imageQuality}},
         onProgress: (m) => setBoardBusy(m),
       });
       setBoardId(meta.id);
@@ -2073,6 +2106,8 @@ export default function OverlayPage() {
       const data = await loadBoard(b.id);
       saveToHistory();
       setImages(data.images);
+      setVideos(data.videos);
+      if(data.extras){setStudioExtras(data.extras);setGenerationSettings(s=>({...s,prompt:data.extras!.settings.prompt}));setImageSize(data.extras.settings.size);setImageQuality(data.extras.settings.quality);if(["openai","gemini","grok"].includes(data.extras.settings.provider))setProviderId(data.extras.settings.provider as ProviderId);if(data.extras.settings.provider==="gemini")setGeminiModel(data.extras.settings.model);else if(data.extras.settings.model)setOpenaiModel(data.extras.settings.model);}else setStudioExtras(emptyExtras());
       setTexts(data.texts);
       setShapes(data.shapes);
       setNotes(data.notes);
@@ -2318,13 +2353,27 @@ export default function OverlayPage() {
     else openMaskEdit(action as "brush" | "point" | "text");
   };
 
+  const detectedPromptSize = promptImageSize(generationSettings.prompt);
+  useEffect(() => { if (detectedPromptSize) setImageSize(detectedPromptSize); }, [detectedPromptSize]);
+
   const handleRun = async () => {
+    const resolvedSize = imageSize;
+    if (resolvedSize !== imageSize) setImageSize(resolvedSize);
+    saveToHistory();
     // fal 파이프라인 대신 gpt-image-2 중계 서버 사용 (선택 이미지 = 참조, F-04)
     await runOpenAIGeneration({
       images,
       selectedIds,
-      prompt: generationSettings.prompt,
-      size: imageSize,
+      prompt: [generationSettings.prompt,
+        exactCopy.trim() && `이미지에 넣을 문구는 다음과 같다. 따옴표 안 내용을 번역하거나 바꾸지 말고 정확하게 표기하고, 읽기 좋은 크기와 대비로 배치하라: ${JSON.stringify(exactCopy.trim())}`,
+        images.some(i => selectedIds.includes(i.id)) && referenceKeep.trim() && `참조 이미지에서 반드시 유지할 특징: ${referenceKeep.trim()}. 요청한 변경 외에는 이 특징을 유지하라.`
+      ].filter(Boolean).join("\n\n"),
+      n: providerId === "openai" ? variantCount : 1,
+      workspaceLeft: canvasSize.width >= 768 ? 348 : 0,
+      workspaceRight: canvasSize.width >= 1100 ? 280 : 0,
+      workspaceBottom: canvasSize.width >= 768 ? 60 : canvasSize.height * .48,
+      setViewport,
+      size: resolvedSize,
       quality: imageQuality,
       transparent: transparentBg,
       provider: providerId,
@@ -2378,11 +2427,15 @@ export default function OverlayPage() {
     // Update both arrays
     setImages((prev) => [...prev, ...newImages]);
     setVideos((prev) => [...prev, ...newVideos]);
+    const copy = <T extends {id: string; x: number; y: number}>(items: T[]) => items.filter(i => selectedIds.includes(i.id)).map(i => ({...i, id: crypto.randomUUID(), x: i.x + 20, y: i.y + 20}));
+    const newTexts = copy(texts), newShapes = copy(shapes), newNotes = copy(notes).map(n => ({...n, targetX:n.targetX+20, targetY:n.targetY+20}));
+    setTexts(prev => [...prev, ...newTexts]); setShapes(prev => [...prev, ...newShapes]); setNotes(prev => [...prev, ...newNotes]);
 
     // Select all duplicated items
     const newIds = [
       ...newImages.map((img) => img.id),
       ...newVideos.map((vid) => vid.id),
+      ...newTexts.map(i => i.id), ...newShapes.map(i => i.id), ...newNotes.map(i => i.id),
     ];
     setSelectedIds(newIds);
   };
@@ -2632,13 +2685,7 @@ export default function OverlayPage() {
   }, []);
 
   // ── 포스터 판 (P2) ────────────────────────────────────────────────
-  // 판은 브라우저에도 기억해 두고(새로고침해도 유지), 보드 저장에도 같이 들어간다
-  useEffect(() => {
-    try {
-      const s = localStorage.getItem("gomgom-artboard");
-      if (s) setArtboard(JSON.parse(s));
-    } catch {}
-  }, []);
+  // 새 세션은 자유 작업으로 시작한다. 저장한 보드를 명시적으로 열 때만 판을 복원한다.
   useEffect(() => {
     try {
       if (artboard) localStorage.setItem("gomgom-artboard", JSON.stringify(artboard));
@@ -2668,15 +2715,19 @@ export default function OverlayPage() {
     const stage = stageRef.current;
     if (!artboard || !stage) return;
     setExporting("굽는 중… (큰 판은 수십 초)");
-    const keep = selectedIds;
+    const keep = selectedIds, previousViewport = viewport;
+    const frame = fitArtboard(artboard, canvasSize.width, canvasSize.height);
     setSelectedIds([]);
     setIsBaking(true); // 메모·선택 표시·판 테두리·판 밖 회색을 숨긴다
+    setViewport(frame);
     await new Promise((r) => setTimeout(r, 150));
     try {
-      const s = viewport.scale;
+      checkExportSize(artboard.width, artboard.height);
+      await document.fonts.ready;
+      const s = frame.scale;
       const raw = stage.toCanvas({
-        x: artboard.x * s + viewport.x,
-        y: artboard.y * s + viewport.y,
+        x: artboard.x * s + frame.x,
+        y: artboard.y * s + frame.y,
         width: artboard.width * s,
         height: artboard.height * s,
         pixelRatio: 1 / s,
@@ -2689,7 +2740,7 @@ export default function OverlayPage() {
       const blob: Blob | null = await new Promise((res) => out.toBlob(res, "image/png"));
       if (!blob) throw new Error("PNG 변환 실패");
       const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
+      a.href = URL.createObjectURL(await pngWithDpi(blob, artboard.dpi));
       a.download = artboardFileName(artboard);
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 5000);
@@ -2706,6 +2757,7 @@ export default function OverlayPage() {
     } finally {
       setIsBaking(false);
       setSelectedIds(keep);
+      setViewport(previousViewport);
       setExporting("");
     }
   };
@@ -2714,6 +2766,21 @@ export default function OverlayPage() {
   const turdamLoaded = useRef(false);
   const [turdamStatus, setTurdamStatus] = useState("");
   const [turdamSending, setTurdamSending] = useState(false);
+  const [turdamSource, setTurdamSource] = useState<"image" | "board">("image");
+  const [turdamFit, setTurdamFit] = useState<"contain" | "cover">("contain");
+  const [turdamPreview, setTurdamPreview] = useState("");
+  const selectedTurdamImage = selectedIds.length === 1 ? images.find(i => i.id === selectedIds[0] && i.src !== generationPlaceholderSrc) : undefined;
+  useEffect(() => {
+    if (turdamSending) return;
+    let cancelled = false;
+    setTurdamPreview("");
+    if (turdam && turdamSource === "image" && selectedTurdamImage) {
+      renderSelectedImage(selectedTurdamImage, turdam.board.width, turdam.board.height, turdamFit)
+        .then(src => { if (!cancelled) setTurdamPreview(src); })
+        .catch(() => { if (!cancelled) setTurdamStatus("선택한 이미지를 읽을 수 없어요. 다른 이미지를 선택해 주세요."); });
+    }
+    return () => { cancelled = true; };
+  }, [turdam, turdamSource, turdamFit, selectedTurdamImage, turdamSending]);
   useEffect(() => {
     if (!isStorageLoaded || !window.opener) return;
     const query = new URLSearchParams(location.search), token = query.get("turdam"), origin = query.get("origin");
@@ -2734,14 +2801,12 @@ export default function OverlayPage() {
       // Keep the existing canvas intact; create the new design to its right.
       const x = Math.max(0, ...images.map(i => i.x + i.width), ...shapes.map(i => i.x + i.width), ...texts.map(i => i.x + 2000)) + 500;
       const board: Artboard = {x, y: 0, width: w, height: h, widthMm: width * 1000, heightMm: height * 1000, dpi: w / (width * 1000 / 25.4), name};
-      const blank = document.createElement("canvas"); blank.width = w; blank.height = h;
-      const ctx = blank.getContext("2d")!; ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, w, h);
       const id = crypto.randomUUID();
-      setImages(prev => [...prev, {id, src: image || blank.toDataURL("image/png"), x, y: 0, width: w, height: h, rotation: 0}]);
-      setSelectedIds([id]); setArtboard(board); setViewport(fitArtboard(board, canvasSize.width, canvasSize.height));
+      if (image) setImages(prev => [...prev, {id, src: image, x, y: 0, width: w, height: h, rotation: 0}]);
+      setSelectedIds(image ? [id] : []); setArtboard(null); setViewport(fitArtboard(board, canvasSize.width, canvasSize.height));
       setGenerationSettings(prev => ({...prev, prompt: `${name} 디자인. 가로 ${width}m × 세로 ${height}m 비율에 맞춰 주세요.`}));
-      const size = normalizeSize(Math.max(256, w), Math.max(256, h)); if ("value" in size) setImageSize(size.value);
-      setTurdam({token, origin, name, board}); setTurdamStatus("판 안에 이미지·글자·도형을 배치한 뒤 적용하세요. AI 생성은 실행 버튼을 누를 때만 진행돼요.");
+      setImageSize(sizeForAspect(w, h));
+      setTurdam({token, origin, name, board}); setTurdamStatus("이미지를 만들거나 선택한 뒤 바로 적용하세요. 흰 작업판에 옮길 필요 없어요.");
     };
     window.addEventListener("message", receive);
     window.opener.postMessage({type: "turdam-canvas-ready", token}, origin);
@@ -2750,17 +2815,26 @@ export default function OverlayPage() {
 
   const applyToTurdam = async () => {
     if (!turdam || !stageRef.current || turdamSending) return;
+    if (turdamSource === "image" && !selectedTurdamImage) {setTurdamStatus("적용할 이미지 한 장을 선택해 주세요."); return;}
     if (!window.opener || window.opener.closed) {setTurdamStatus("터담 창이 닫혔어요. 터담에서 다시 연결해 주세요."); return;}
     setTurdamSending(true); setTurdamStatus("디자인을 보내고 있어요…");
-    const keep = selectedIds; setSelectedIds([]); setIsBaking(true);
+    const keep = selectedIds, previousViewport = viewport;
     try {
-      await document.fonts.ready;
-      await new Promise(resolve => setTimeout(resolve, 180));
-      const b = turdam.board, s = viewport.scale;
-      const image = stageRef.current.toDataURL({x: b.x * s + viewport.x, y: b.y * s + viewport.y, width: b.width * s, height: b.height * s, pixelRatio: 1 / s, mimeType: "image/png"});
+      let image: string;
+      const b = turdam.board;
+      if (turdamSource === "image") {
+        image = await renderSelectedImage(selectedTurdamImage!, b.width, b.height, turdamFit);
+      } else {
+        const frame = fitArtboard(b, canvasSize.width, canvasSize.height);
+        setSelectedIds([]); setIsBaking(true); setViewport(frame);
+        await document.fonts.ready;
+        await new Promise(resolve => setTimeout(resolve, 180));
+        image = stageRef.current.toDataURL({x: b.x * frame.scale + frame.x, y: b.y * frame.scale + frame.y, width: b.width * frame.scale, height: b.height * frame.scale, pixelRatio: 1 / frame.scale, mimeType: "image/png"});
+      }
+      if (image.length > 6000000) throw new Error("이미지가 너무 커요");
       window.opener.postMessage({type: "turdam-canvas-result", token: turdam.token, image}, turdam.origin);
     } catch {setTurdamSending(false); setTurdamStatus("이미지를 보내지 못했어요. 업로드한 이미지 상태를 확인해 주세요.");}
-    finally {setIsBaking(false); setSelectedIds(keep);}
+    finally {setIsBaking(false); setSelectedIds(keep); if (turdamSource === "board") setViewport(previousViewport);}
   };
 
   useEffect(() => {
@@ -3350,7 +3424,7 @@ export default function OverlayPage() {
       // Select all
       else if ((e.metaKey || e.ctrlKey) && e.key === "a" && !isInputElement) {
         e.preventDefault();
-        setSelectedIds(images.map((img) => img.id));
+        setSelectedIds([...images, ...videos, ...texts, ...shapes, ...notes].filter(i => !("hidden" in i && i.hidden)).map(i => i.id));
       }
       // Delete
       else if (
@@ -3478,17 +3552,28 @@ export default function OverlayPage() {
 
   return (
     <div
-      className="bg-background text-foreground font-focal relative flex flex-col w-full overflow-hidden h-screen"
+      className="canvas-workspace bg-background text-foreground font-focal relative flex flex-col w-full overflow-hidden h-screen"
       style={{ height: "100dvh" }}
       onDrop={handleDrop}
       onDragOver={(e) => e.preventDefault()}
       onDragEnter={(e) => e.preventDefault()}
       onDragLeave={(e) => e.preventDefault()}
     >
-      {turdam && <div role="region" aria-label="터담 디자인 연결" className="fixed top-14 left-1/2 -translate-x-1/2 z-[100] flex max-w-[90vw] flex-wrap items-center gap-3 rounded-xl border border-emerald-700 bg-[#20382c] px-4 py-3 text-white shadow-lg">
-        <div className="text-xs"><strong>{turdam.name} · 터담 연결</strong><p role="status">{turdamStatus}</p><span>설치 미리보기용 · 인쇄 원본은 별도 보관하세요.</span></div>
-        <Button className="bg-[#f2f4e9] text-[#20382c] hover:bg-white" onClick={() => {setArtboard(turdam.board); setViewport(fitArtboard(turdam.board, canvasSize.width, canvasSize.height));}}>작업 면 보기</Button>
-        <Button className="bg-[#d2e5ad] text-[#20382c] hover:bg-white" disabled={turdamSending} onClick={applyToTurdam}>터담에 적용</Button>
+      {turdam && <div role="region" aria-label="터담 디자인 연결" className="studio-turdam">
+        <div className="flex items-start gap-4">
+          <div className="min-w-0 flex-1"><strong className="text-sm">{turdam.name}에 디자인 적용</strong><p className="mt-1 text-xs">이미지는 어디에 놓여 있어도 바로 사용할 수 있어요.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button size="sm" variant={turdamSource === "image" ? "default" : "outline"} aria-pressed={turdamSource === "image"} onClick={() => {setTurdamSource("image"); setArtboard(null);}} disabled={turdamSending}>선택한 이미지 사용</Button>
+            <Button size="sm" variant={turdamSource === "board" ? "default" : "outline"} aria-pressed={turdamSource === "board"} onClick={() => {setTurdamSource("board"); setArtboard(turdam.board); setViewport(fitArtboard(turdam.board, canvasSize.width, canvasSize.height));}} disabled={turdamSending}>작업판 전체 사용</Button>
+          </div>
+          {turdamSource === "image" ? <label className="mt-2 flex items-center gap-2 text-xs">비율 맞추기<select aria-label="터담 이미지 맞춤" className="rounded-md border bg-white p-1.5" value={turdamFit} disabled={turdamSending} onChange={e => setTurdamFit(e.target.value as "contain" | "cover")}><option value="contain">전체 보이기 · 여백 허용</option><option value="cover">꽉 채우기 · 가장자리 잘림</option></select></label> : <p className="mt-2 text-xs">작업판 안의 이미지·글자·도형을 함께 적용해요.</p>}
+          </div>
+          {turdamSource === "image" && <div className="flex h-24 w-36 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-white text-center text-xs text-slate-500">{turdamPreview ? <img src={turdamPreview} alt="터담 적용 미리보기" className="h-full w-full object-contain" /> : "이미지 한 장을 선택해 주세요"}</div>}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-emerald-900/10 pt-3"><p role="status" className="max-w-sm text-xs">{turdamStatus}</p><div className="flex gap-2">
+        {turdamSource === "board" && <Button size="sm" variant="outline" onClick={() => {setArtboard(turdam.board); setViewport(fitArtboard(turdam.board, canvasSize.width, canvasSize.height));}}>작업 면 보기</Button>}
+        <Button size="sm" className="bg-[#20382c] text-white hover:bg-[#315743]" disabled={turdamSending || isGenerating || (turdamSource === "image" && !turdamPreview)} onClick={applyToTurdam}>{turdamSending ? "적용 중…" : "터담에 적용"}</Button>
+        </div></div>
       </div>}
       {/* Render streaming components for active generations */}
       {Array.from(activeGenerations.entries()).map(([imageId, generation]) => (
@@ -3908,7 +3993,7 @@ export default function OverlayPage() {
             />
           </ContextMenu>
 
-          <div className="absolute top-4 left-4 z-20 flex flex-col items-start gap-2">
+          <div className="absolute top-32 left-4 z-20 flex flex-col items-start gap-2">
             {/* Mobile tool icons - animated based on selection */}
             <MobileToolbar
               selectedIds={selectedIds}
@@ -3928,11 +4013,18 @@ export default function OverlayPage() {
             />
           </div>
 
-          <div className="fixed bottom-0 left-0 right-0 md:absolute md:bottom-4 md:left-1/2 md:transform md:-translate-x-1/2 z-20 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] md:p-0 md:pb-0 md:w-[min(92vw,720px)]">
+          <div className="studio-composer" role="region" aria-label="이미지 생성 설정">
+            <nav className="studio-nav" aria-label="작업 종류">
+              <button aria-current="page" onClick={() => document.getElementById("studio-prompt")?.focus()}>이미지 만들기</button>
+              <button onClick={() => {setVideoMode(true);setWorkbenchOpen(true);}}>동영상 만들기</button>
+              <button onClick={openFilePicker}>이미지 가져오기</button>
+              <button onClick={() => {setCardnewsMounted(true);setCardnewsStudioOpen(true);}}>카드뉴스 만들기</button>
+              <button onClick={() => setMapStudioOpen(true)}>지도 만들기</button>
+            </nav>
+            <div className="studio-section-title"><span>이미지 만들기</span><small>생각을 한 장의 이미지로</small></div>
             <div
               className={cn(
-                "bg-card/95 backdrop-blur-lg rounded-3xl",
-                "shadow-[0_0_0_1px_rgba(50,50,50,0.16),0_4px_8px_-0.5px_rgba(50,50,50,0.08),0_8px_16px_-2px_rgba(50,50,50,0.04)]",
+                "studio-composer-body bg-card",
                 "dark:shadow-none dark:outline dark:outline-1 dark:outline-border",
               )}
             >
@@ -3954,7 +4046,7 @@ export default function OverlayPage() {
                       exit={{ opacity: 0, y: -10, scale: 0.9, x: "-50%" }}
                       transition={{ duration: 0.2, ease: "easeInOut" }}
                       className={cn(
-                        "absolute z-50 -top-16 left-1/2",
+                        "fixed z-50 top-20 left-1/2",
                         "rounded-xl",
                         showSuccess
                           ? "shadow-[0_0_0_1px_rgba(34,197,94,0.2),0_4px_8px_-0.5px_rgba(34,197,94,0.08),0_8px_16px_-2px_rgba(34,197,94,0.04)] dark:shadow-none dark:border dark:border-green-500/30"
@@ -3993,234 +4085,7 @@ export default function OverlayPage() {
                 </AnimatePresence>
 
                 {/* Action buttons row */}
-                <div className="flex items-center gap-1">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={cn(
-                        "rounded-xl overflow-clip flex items-center",
-                        "shadow-[0_0_0_1px_rgba(50,50,50,0.12),0_4px_8px_-0.5px_rgba(50,50,50,0.04),0_8px_16px_-2px_rgba(50,50,50,0.02)]",
-                        "dark:shadow-none dark:border dark:border-border",
-                      )}
-                    >
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={undo}
-                        disabled={historyIndex <= 0}
-                        className="rounded-none"
-                        title="실행취소"
-                      >
-                        <Undo className="h-4 w-4" />
-                      </Button>
-                      <div className="h-6 w-px bg-border" />
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={redo}
-                        disabled={historyIndex >= history.length - 1}
-                        className="rounded-none"
-                        title="다시실행"
-                      >
-                        <Redo className="h-4 w-4" strokeWidth={2} />
-                      </Button>
-                    </div>
-
-                    {/* Mode indicator badge */}
-                    <div
-                      className={cn(
-                        "h-9 rounded-xl overflow-clip flex items-center px-3",
-                        "pointer-events-none select-none",
-                        selectedIds.length > 0
-                          ? "bg-blue-500/10 dark:bg-blue-500/15 shadow-[0_0_0_1px_rgba(59,130,246,0.2),0_4px_8px_-0.5px_rgba(59,130,246,0.08),0_8px_16px_-2px_rgba(59,130,246,0.04)] dark:shadow-none dark:border dark:border-blue-500/30"
-                          : "bg-orange-500/10 dark:bg-orange-500/15 shadow-[0_0_0_1px_rgba(249,115,22,0.2),0_4px_8px_-0.5px_rgba(249,115,22,0.08),0_8px_16px_-2px_rgba(249,115,22,0.04)] dark:shadow-none dark:border dark:border-orange-500/30",
-                      )}
-                    >
-                      {selectedIds.length > 0 ? (
-                        <div className="flex items-center gap-2 text-xs font-medium">
-                          <ImageIcon className="w-4 h-4 text-blue-600 dark:text-blue-500" />
-                          <span className="text-blue-600 dark:text-blue-500">
-                            참조 생성 ({selectedIds.length}장)
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 text-xs font-medium">
-                          <span className="text-orange-600 dark:text-orange-500 font-bold text-sm">
-                            T
-                          </span>
-                          <span className="text-orange-600 dark:text-orange-500">
-                            새로 생성
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex-1" />
-                  <div className="flex items-center gap-2">
-                    {/* 밝게/어둡게 원클릭 전환 */}
-                    <TooltipProvider>
-                      <Tooltip delayDuration={0}>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="secondary"
-                            size="icon-sm"
-                            onClick={() =>
-                              setTheme(resolvedTheme === "dark" ? "light" : "dark")
-                            }
-                            title={
-                              resolvedTheme === "dark"
-                                ? "밝은 화면으로"
-                                : "어두운 화면으로"
-                            }
-                          >
-                            {resolvedTheme === "dark" ? (
-                              <SunIcon className="h-3.5 w-3.5" />
-                            ) : (
-                              <MoonIcon className="h-3.5 w-3.5" />
-                            )}
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <span>
-                            {resolvedTheme === "dark"
-                              ? "밝은 화면으로"
-                              : "어두운 화면으로"}
-                          </span>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-
-                    {/* 생성 이력 (F-10) */}
-                    <TooltipProvider>
-                      <Tooltip delayDuration={0}>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="secondary"
-                            size="icon-sm"
-                            onClick={() => {
-                              setHistoryOpen((v) => !v);
-                              setLayersOpen(false); // 같은 자리를 쓰므로 하나만 연다
-                            }}
-                            title="생성 이력"
-                          >
-                            <History className="h-3.5 w-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <span>생성 이력</span>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-
-                    {/* 레이어 패널 (포스터 모드 P1) */}
-                    <TooltipProvider>
-                      <Tooltip delayDuration={0}>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant={layersOpen ? "default" : "secondary"}
-                            size="icon-sm"
-                            onClick={() => {
-                              setLayersOpen((v) => !v);
-                              setHistoryOpen(false);
-                            }}
-                            title="레이어"
-                          >
-                            <Layers className="h-3.5 w-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <span>레이어 — 순서·숨김·잠금</span>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-
-                    {/* 포스터 판 (P2) */}
-                    <TooltipProvider>
-                      <Tooltip delayDuration={0}>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant={artboard ? "default" : "secondary"}
-                            size="icon-sm"
-                            onClick={() => setArtboardOpen(true)}
-                            title="포스터 판"
-                          >
-                            <Frame className="h-3.5 w-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <span>
-                            {artboard
-                              ? `포스터 판 — ${artboard.name} · 내보내기`
-                              : "포스터 판 만들기 (인쇄 크기)"}
-                          </span>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-
-                    {/* 캔버스 초기화 */}
-                    <TooltipProvider>
-                      <Tooltip delayDuration={0}>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="secondary"
-                            size="icon-sm"
-                            onClick={async () => {
-                              if (
-                                confirm(
-                                  "캔버스를 비울까요? 캔버스 위 이미지와 저장된 상태가 모두 지워집니다. (생성 이력은 남습니다)",
-                                )
-                              ) {
-                                await canvasStorage.clearAll();
-                                setImages([]);
-                                setVideos([]);
-                                setTexts([]);
-                                setShapes([]);
-                                setNotes([]);
-                                setSelectedIds([]);
-                                setHistory([]);
-                                setHistoryIndex(-1);
-                                setViewport({ x: 0, y: 0, scale: 1 });
-                                toast({
-                                  title: "캔버스를 비웠어요",
-                                  description: "저장된 캔버스 상태도 함께 지웠습니다",
-                                });
-                              }
-                            }}
-                            className="bg-destructive/10 text-destructive hover:bg-destructive/20"
-                            title="캔버스 초기화"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent className="text-destructive">
-                          <span>캔버스 초기화</span>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-
-                    {/* Settings dialog button */}
-                    <TooltipProvider>
-                      <Tooltip delayDuration={0}>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="secondary"
-                            size="icon-sm"
-                            className="relative"
-                            onClick={() => setIsSettingsDialogOpen(true)}
-                          >
-                            <SlidersHorizontal className="h-4 w-4" />
-                            {customApiKey && (
-                              <div className="absolute size-2.5 -top-0.5 -right-0.5 bg-blue-500 rounded-full" />
-                            )}
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <span>설정</span>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                </div>
-
+                <div className={selectedIds.some(id => texts.some(t => t.id === id) || shapes.some(s => s.id === id)) ? "studio-properties" : ""}>
                 {(() => {
                   const sp = shapes.find((x) => selectedIds.includes(x.id));
                   if (sp)
@@ -4266,8 +4131,12 @@ export default function OverlayPage() {
                   ) : null;
                 })()}
 
+                </div>
+                <label htmlFor="studio-prompt" className="text-sm font-semibold">어떤 이미지를 만들까요?</label>
                 <div className="relative">
                   <Textarea
+                    id="studio-prompt"
+                    disabled={!extrasLoaded}
                     value={generationSettings.prompt}
                     onChange={(e) =>
                       setGenerationSettings({
@@ -4278,7 +4147,7 @@ export default function OverlayPage() {
                     // OS 분기를 아예 안 쓴다 — 서버는 브라우저의 OS를 모르니 ⌘로 렌더하고
                     // 윈도우 브라우저는 Ctrl로 렌더해서 하이드레이션이 깨졌다. 둘 다 적으면 안 갈린다.
                     placeholder="프롬프트를 입력하세요… (Ctrl/⌘+Enter 실행)"
-                    className="w-full h-20 resize-none border-none p-2 pr-36"
+                    className="w-full h-36 resize-none rounded-xl border p-3 pr-14"
                     style={{ fontSize: "16px" }}
                     onKeyDown={(e) => {
                       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -4337,6 +4206,16 @@ export default function OverlayPage() {
                   )}
                 </div>
 
+                <details className="studio-prompt-guide">
+                  <summary>문구·참조 세부 지시</summary>
+                  <label>이미지에 넣을 정확한 문구<textarea aria-label="이미지에 넣을 정확한 문구" value={exactCopy} onChange={e => setExactCopy(e.target.value)} placeholder="예: 가을밤, 국악과 만나다" /></label>
+                  <label>참조에서 유지할 특징<textarea aria-label="참조에서 유지할 특징" value={referenceKeep} onChange={e => setReferenceKeep(e.target.value)} placeholder="예: 인물의 얼굴, 의상과 로고 색상" /></label>
+                  <p>참조는 캔버스에서 이미지를 선택해 지정해요. 문구와 특징은 생성 지시에 함께 보내며, 결과는 확인해 주세요.</p>
+                </details>
+                <div className="px-1 pb-2 text-xs text-muted-foreground" role="status">
+                  출력 크기 · {imageSize.replace("x", " × ")}px
+                  {artboard && Math.abs(artboard.width / artboard.height - Number(imageSize.split("x")[0]) / Number(imageSize.split("x")[1])) > .02 && <span className="ml-2 text-amber-700">작업판과 비율이 달라요 · 적용할 때 맞춤 방식을 선택하세요</span>}
+                </div>
                 <div className="flex flex-wrap items-center gap-1.5 px-1 pb-1">
                   <Button
                     variant="secondary"
@@ -4381,7 +4260,7 @@ export default function OverlayPage() {
                     onValueChange={(v) => setProviderId(v as ProviderId)}
                   >
                     <SelectTrigger className="h-7 w-[104px] text-xs">
-                      <SelectValue />
+                      <SelectValue placeholder="OpenAI" />
                     </SelectTrigger>
                     <SelectContent>
                       {providerList.map((p) => (
@@ -4433,34 +4312,27 @@ export default function OverlayPage() {
                       </SelectContent>
                     </Select>
                   )}
-                  <Select
-                    value={imageSize}
-                    onValueChange={(v) => {
-                      if (v === "__custom") setCustomSizeOpen(true);
-                      else setImageSize(v);
-                    }}
-                  >
-                    <SelectTrigger className="h-7 w-[132px] text-xs">
-                      <SelectValue>
-                        {SIZE_PRESETS.find((p) => p.value === imageSize)
-                          ?.label || `직접 ${imageSize}`}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SIZE_PRESETS.map((p) => (
-                        <SelectItem key={p.value} value={p.value}>
-                          <span className="flex items-center gap-2">
-                            <span>{p.label}</span>
-                            <span className="text-[10px] text-muted-foreground">
-                              {p.value.replace("x", "×")}
-                              {p.note ? ` · ${p.note}` : ""}
-                            </span>
-                          </span>
-                        </SelectItem>
-                      ))}
-                      <SelectItem value="__custom">✎ 직접 입력…</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <fieldset className="flex flex-wrap gap-1 w-full" aria-label="이미지 비율">
+                    <legend className="text-xs mb-1">비율</legend>
+                    {[["정사각", "1024x1024"], ["가로 16:9", "1536x864"], ["세로 9:16", "864x1536"], ["가로 3:2", "1536x1024"], ["세로 2:3", "1024x1536"], ["현수막 3:1", "2880x960"], ["A4 세로", "1760x2480"], ["A4 가로", "2480x1760"]].map(([label, value]) => {
+                      const [w,h]=imageSize.split("x").map(Number), [pw,ph]=value.split("x").map(Number);
+                      return <button key={value} type="button" className="rounded border px-2 py-1 text-xs aria-pressed:bg-primary aria-pressed:text-primary-foreground" aria-pressed={Math.abs(w/h-pw/ph)<.02} onClick={()=>setImageSize(value)}>{label}</button>;
+                    })}
+                  </fieldset>
+                  <details className="w-full">
+                    <summary className="cursor-pointer text-xs py-2">세부 설정 · 해상도</summary>
+                    <p className="text-xs text-muted-foreground mb-2">현재 {imageSize.replace("x"," × ")}px · 비율을 유지하며 크기를 바꿔요.</p>
+                    <div className="flex gap-2">
+                      {[ ["기본", 1_327_104], ["고해상도", 4_000_000] ].map(([label,pixels])=><button key={label} type="button" className="rounded border px-2 py-1 text-xs" onClick={()=>{const [w,h]=imageSize.split("x").map(Number);const scale=Math.sqrt(Number(pixels)/(w*h));const result=normalizeSize(w*scale,h*scale);if("value" in result)setImageSize(result.value);}}>{label}</button>)}
+                      <button type="button" className="rounded border px-2 py-1 text-xs" onClick={()=>setCustomSizeOpen(true)}>직접 입력…</button>
+                    </div>
+                  </details>
+                  {providerId === "openai" && <label className="studio-variants">시안 수
+                    <select aria-label="시안 수" value={variantCount} onChange={e => setVariantCount(Number(e.target.value))}>
+                      <option value={1}>1장</option><option value={2}>2장 비교</option><option value={4}>4장 비교</option>
+                    </select>
+                    {variantCount > 1 && <small>장수에 따라 비용이 늘어요</small>}
+                  </label>}
                   <Select value={imageQuality} onValueChange={setImageQuality}>
                     <SelectTrigger className="h-7 w-[86px] text-xs">
                       <SelectValue />
@@ -4490,83 +4362,6 @@ export default function OverlayPage() {
                     {transparentBg ? "☑ 투명 배경" : "☐ 투명 배경"}
                   </Button>
 
-                  {selectedIds.length > 0 && (
-                    <>
-                      <div className="mx-0.5 h-4 w-px bg-border" />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() =>
-                          downloadImagesAsZip(
-                            images.filter((img) => selectedIds.includes(img.id)),
-                          )
-                        }
-                      >
-                        ⬇ ZIP ({selectedIds.length})
-                      </Button>
-                    </>
-                  )}
-                  {selectedIds.length === 1 &&
-                    images.some((i) => i.id === selectedIds[0]) && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            className="h-7 text-xs"
-                          >
-                            ✏️ 이 이미지 수정 ▾
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start">
-                          {(texts.length > 0 || shapes.length > 0) && (
-                            <>
-                              <DropdownMenuItem onClick={bakeTextIntoImage}>
-                                🔥 합치기 — 얹은 글자·도형을 이미지로 굽기
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                            </>
-                          )}
-                          <DropdownMenuItem onClick={() => openMaskEdit("brush")}>
-                            🖌 부분수정 — 고칠 부분 칠하기
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openMaskEdit("point")}>
-                            📍 포인트수정 — 고칠 것 콕 찍기
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openMaskEdit("text")}>
-                            ✏️ 글자수정 — 글자 칠하고 새 문구
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={cutoutForSelected}>
-                            ✂️ 오려내기 — 원본 그대로, 배경만 투명 (무료)
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={removeBgForSelected}>
-                            🫥 배경 제거 — AI가 피사체를 다시 그림
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => runExpandFor("1536x1024")}
-                          >
-                            ↔ 가로로 전개 (현수막·배너)
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => runExpandFor("1024x1536")}
-                          >
-                            ↕ 세로로 전개 (스토리·배너)
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => runExpandFor("1024x1024")}
-                          >
-                            ⬜ 정사각 전개 (SNS 피드)
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => setCardnewsOpen(true)}>
-                            🗂 카드뉴스 — 표지 스타일로 페이지 생성
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
                 </div>
 
                 {/* Style dropdown and Run button */}
@@ -4615,7 +4410,7 @@ export default function OverlayPage() {
                         <TooltipTrigger asChild>
                           <Button
                             variant="ghost"
-                            size="icon"
+                            size="sm"
                             className="border-none"
                             onClick={() => {
                               // Create file input with better mobile support
@@ -4711,12 +4506,12 @@ export default function OverlayPage() {
                           <Button
                             onClick={handleRun}
                             variant="primary"
-                            size="icon"
+                            size="sm"
                             disabled={
                               isGenerating || !generationSettings.prompt.trim()
                             }
                             className={cn(
-                              "gap-2 font-medium transition-all",
+                              "studio-generate gap-2 font-medium transition-all",
                               isGenerating && "bg-secondary",
                             )}
                           >
@@ -4725,6 +4520,7 @@ export default function OverlayPage() {
                             ) : (
                               <PlayIcon className="h-4 w-4 text-white fill-white" />
                             )}
+                            {isGenerating ? "만드는 중…" : "이미지 생성"}
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>
@@ -4759,12 +4555,9 @@ export default function OverlayPage() {
             />
           )}
 
-          {/* {isSaving && (
-            <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-30 bg-background/95 border rounded-xl px-3 py-2 flex items-center gap-2 shadow-sm">
-              <SpinnerIcon className="h-4 w-4 animate-spin text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Saving...</span>
-            </div>
-          )} */}
+          {isStorageLoaded && <div role="status" className={`fixed bottom-3 right-4 z-30 rounded-lg border bg-white/95 px-3 py-1 text-xs ${saveError ? "text-red-700" : "text-slate-500"}`}>
+            {saveError ? "자동 저장 실패 · 창을 닫기 전 보드에 저장해 주세요" : isSaving ? "저장 중…" : "이 브라우저에 자동 저장됨"}
+          </div>}
 
           {/* Zoom controls */}
           <ZoomControls
@@ -4774,7 +4567,8 @@ export default function OverlayPage() {
           />
 
           {/* 앱 로고 */}
-          <div className="fixed left-4 top-4 z-30 flex items-center gap-2 rounded-2xl border bg-card/95 px-3 py-1.5 shadow-sm backdrop-blur">
+          <header className="studio-header">
+            <StudioWorkbench videoMode={videoMode} open={workbenchOpen} onClose={()=>setWorkbenchOpen(false)} project={{images,videos,texts,shapes,notes,viewport,artboard,extras:{...studioExtras,settings:{prompt:generationSettings.prompt,provider:providerId,model:providerId==="gemini"?geminiModel:openaiModel,size:imageSize,quality:imageQuality}}}} selectedIds={selectedIds} boardId={boardId} boardName={boardName} onApply={(p:StudioProject,detach?:boolean)=>{if(detach){setBoardId(null);setBoardName("");setBoardUpdatedAt(undefined);setSelectedIds([]);}saveToHistory();setImages(p.images);setVideos(p.videos);setTexts(p.texts);setShapes(p.shapes);setNotes(p.notes);setViewport(p.viewport);setArtboard(p.artboard);setStudioExtras(p.extras);setGenerationSettings(s=>({...s,prompt:p.extras.settings.prompt}));setImageSize(p.extras.settings.size);setImageQuality(p.extras.settings.quality);if(["openai","gemini","grok"].includes(p.extras.settings.provider))setProviderId(p.extras.settings.provider as ProviderId);if(p.extras.settings.provider==="gemini")setGeminiModel(p.extras.settings.model);else if(p.extras.settings.model)setOpenaiModel(p.extras.settings.model);}} />
             <img
               src="/logo-small.png"
               alt="곰곰 캔버스"
@@ -4789,9 +4583,109 @@ export default function OverlayPage() {
             >
               {boardId ? `📋 ${boardName}` : "📋 보드 저장·열기"}
             </button>
-            <button className="rounded-lg bg-[#203c34] px-3 py-1.5 text-xs text-white hover:bg-[#35594c]" onClick={() => {setCardnewsMounted(true);setCardnewsStudioOpen(true);}}>카드뉴스 만들기</button>
-            <button className="rounded-lg border px-3 py-1.5 text-xs hover:bg-accent" onClick={() => setMapStudioOpen(true)}>지도 만들기</button>
-          </div>
+            <div className="studio-header-undo">
+              <button title="실행취소" aria-label="실행취소" onClick={undo} disabled={historyIndex <= 0}><Undo size={17}/></button>
+              <button title="다시실행" aria-label="다시실행" onClick={redo} disabled={historyIndex >= history.length - 1}><Redo size={17}/></button>
+            </div>
+            <div className="flex-1" />
+            <button onClick={()=>{setVideoMode(false);setWorkbenchOpen(true);}}>작업 관리</button>
+            <button onClick={() => {setLayersOpen(v => !v);setHistoryOpen(false);}} aria-pressed={layersOpen}>레이어</button>
+                  {selectedIds.length > 0 && (
+                    <>
+                      <div className="mx-0.5 h-4 w-px bg-border" />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() =>
+                          downloadImagesAsZip(
+                            images.filter((img) => selectedIds.includes(img.id)),
+                          )
+                        }
+                      >
+                        ⬇ ZIP ({selectedIds.length})
+                      </Button>
+                    </>
+                  )}
+                  {selectedIds.length === 1 &&
+                    images.some((i) => i.id === selectedIds[0]) && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="h-7 text-xs"
+                          >
+                            ✏️ 이 이미지 수정 ▾
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          {(texts.length > 0 || shapes.length > 0) && (
+                            <>
+                              <DropdownMenuItem onClick={bakeTextIntoImage}>
+                                🔥 합치기 — 얹은 글자·도형을 이미지로 굽기
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                            </>
+                          )}
+                          <DropdownMenuItem onClick={() => openMaskEdit("brush")}>
+                            🖌 부분수정 — 고칠 부분 칠하기
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openMaskEdit("point")}>
+                            📍 포인트수정 — 고칠 것 콕 찍기
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openMaskEdit("text")}>
+                            ✏️ 글자수정 — 글자 칠하고 새 문구
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={removeBgForSelected}>
+                            ✂️ 배경 제거 — OpenAI
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={cutoutForSelected}>
+                            무료 배경 제거 — 원본 보존
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => runExpandFor("1536x1024")}
+                          >
+                            ↔ 가로로 전개 (현수막·배너)
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => runExpandFor("1024x1536")}
+                          >
+                            ↕ 세로로 전개 (스토리·배너)
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => runExpandFor("1024x1024")}
+                          >
+                            ⬜ 정사각 전개 (SNS 피드)
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setCardnewsOpen(true)}>
+                            🗂 카드뉴스 — 표지 스타일로 페이지 생성
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+            <button onClick={() => {setHistoryOpen(v => !v);setLayersOpen(false);}} aria-pressed={historyOpen}>생성 이력</button>
+            <button onClick={() => setArtboardOpen(true)}>작업판·내보내기</button>
+            <button onClick={() => setUsageOpen(v => !v)} aria-expanded={usageOpen}>사용량</button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild><button aria-label="작업 설정"><SlidersHorizontal size={16}/><span>설정</span></button></DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>{resolvedTheme === "dark" ? "밝은 화면으로" : "어두운 화면으로"}</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowMinimap(v => !v)}>{showMinimap ? "미니맵 숨기기" : "미니맵 표시"}</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setIsSettingsDialogOpen(true)}>API·화면 설정</DropdownMenuItem>
+                <DropdownMenuSeparator/>
+                <DropdownMenuItem className="text-destructive" onClick={async () => {
+                  if (!confirm("캔버스를 비울까요? 캔버스 위 이미지와 저장된 상태가 모두 지워집니다. (생성 이력은 남습니다)")) return;
+                  await canvasStorage.clearAll();
+                  setImages([]);setVideos([]);setTexts([]);setShapes([]);setNotes([]);setSelectedIds([]);setHistory([]);setHistoryIndex(-1);setViewport({x:0,y:0,scale:1});
+                  toast({title:"캔버스를 비웠어요",description:"저장된 캔버스 상태도 함께 지웠습니다"});
+                }}>캔버스 초기화</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </header>
           {cardnewsMounted && <CardnewsStudio open={cardnewsStudioOpen} onClose={() => setCardnewsStudioOpen(false)} images={images}
             onImport={async (deck: CardDeck) => {
               const right = Math.max(0, ...images.map(i => i.x + i.width), ...shapes.map(s => s.x + s.width), ...texts.map(t => t.x + 1000));
@@ -4835,7 +4729,34 @@ export default function OverlayPage() {
               setSelectedIds([id]);
               toast({title: "지도를 캔버스에 넣었어요"});
             }} />
-          <UsageBadge />
+          {!turdam && selectedIds.length === 1 && images.some(i => i.id === selectedIds[0] && i.src !== generationPlaceholderSrc) && <div className="studio-properties">
+            <h2>선택한 이미지</h2>
+            <p>고칠 부분과 출력 방식을 선택하세요.</p>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="outline" size="sm" onClick={() => openMaskEdit("brush")}>부분 수정</Button>
+              <Button variant="outline" size="sm" onClick={() => openMaskEdit("text")}>글자 수정</Button>
+              <Button variant="outline" size="sm" disabled={isGenerating} title="OpenAI로 배경을 제거해요. API 비용이 발생하며 결과는 원본 옆에 추가돼요." onClick={removeBgForSelected}>배경 제거 · OpenAI</Button>
+              <Button variant="outline" size="sm" onClick={() => runExpandFor("1536x864")}>가로로 확장</Button>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => downloadImagesAsZip(images.filter(i => selectedIds.includes(i.id)))}>이미지 다운로드</Button>
+            <Button size="sm" variant="outline" onClick={async () => {
+              const img = images.find(i => i.id === selectedIds[0])!;
+              try {
+                const source = await loadOutputImage(img.src);
+                const width = Math.round(source.naturalWidth * (img.cropWidth ?? 1)), height = Math.round(source.naturalHeight * (img.cropHeight ?? 1));
+                checkExportSize(width, height);
+                const board: Artboard = {x:img.x,y:img.y,width,height,widthMm:width/300*25.4,heightMm:height/300*25.4,dpi:300,name:"선택 이미지"};
+                saveToHistory(); setImages(prev => prev.map(i => i.id === img.id ? {...i,width,height,rotation:0} : i));
+                setArtboard(board); setViewport(fitArtboard(board,canvasSize.width,canvasSize.height));
+              } catch(e) { toast({title:e instanceof Error ? e.message : "판을 만들지 못했어요",variant:"destructive"}); }
+            }}>이미지 크기로 작업판</Button>
+            {artboard && <Button size="sm" variant="outline" onClick={() => {
+              const img = images.find(i => i.id === selectedIds[0])!, scale = Math.min(artboard.width/img.width,artboard.height/img.height);
+              saveToHistory(); setImages(prev => prev.map(i => i.id === img.id ? {...i,width:img.width*scale,height:img.height*scale,x:artboard.x+(artboard.width-img.width*scale)/2,y:artboard.y+(artboard.height-img.height*scale)/2,rotation:0} : i));
+              setViewport(fitArtboard(artboard,canvasSize.width,canvasSize.height));
+            }}>작업판에 맞춤</Button>}
+          </div>}
+          {usageOpen && <UsageBadge />}
           <ToolPalette
             onAddText={addTextLayer}
             onAddShape={addShape}
@@ -4855,15 +4776,17 @@ export default function OverlayPage() {
             shapes.length === 0 &&
             notes.length === 0 &&
             !isGenerating && (
-              <div className="pointer-events-none fixed inset-0 z-0 flex items-center justify-center">
-                <div className="text-center text-muted-foreground/60 select-none">
-                  <p className="text-lg font-medium">
-                    제안서(md·PDF)나 이미지를 여기에 끌어다 놓으세요
-                  </p>
-                  <p className="mt-1 text-sm">
-                    또는 아래 입력창에 프롬프트를 쓰고 실행(▶)을 누르면 이미지가
-                    생성됩니다
-                  </p>
+              <div className="studio-welcome" style={artboard ? {display:"none"} : undefined}>
+                <div>
+                  <span className="studio-eyebrow">GOMGOM CANVAS</span>
+                  <h1>{turdam ? "무대에 어울리는 이미지를 만들어요" : "오늘의 아이디어를 펼쳐보세요"}</h1>
+                  <p>이미지 한 장부터 공연 포스터까지.<br/>작업판 없이 자유롭게 시작하세요.</p>
+                  <div className="studio-start-actions">
+                    <button onClick={() => document.getElementById("studio-prompt")?.focus()}><ImageIcon size={24}/><strong>이미지 만들기</strong><small>말로 설명하고 생성하기</small></button>
+                    <button onClick={openFilePicker}><Paperclip size={24}/><strong>파일 가져오기</strong><small>이미지 · 제안서 · PDF</small></button>
+                    <button onClick={() => setBoardOpen(true)}><History size={24}/><strong>저장한 작업 열기</strong><small>이어서 작업하기</small></button>
+                  </div>
+                  <small>파일을 이곳으로 끌어다 놓아도 돼요</small>
                 </div>
               </div>
             )}

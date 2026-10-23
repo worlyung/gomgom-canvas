@@ -21,6 +21,9 @@ interface ImageTransform {
 }
 
 interface CanvasElement {
+  hidden?: boolean;
+  locked?: boolean;
+  generation?: import("@/types/canvas").PlacedImage["generation"];
   id: string;
   type: "image" | "text" | "shape" | "video" | "note";
   imageId?: string; // Reference to IndexedDB image
@@ -188,10 +191,8 @@ class CanvasStorage {
       localStorage.setItem(this.STATE_KEY, JSON.stringify(state));
     } catch (e) {
       console.error("Failed to save canvas state:", e);
-      // Handle quota exceeded error
-      if (e instanceof DOMException && e.name === "QuotaExceededError") {
-        this.cleanupOldData();
-      }
+      // Never prune against an older snapshot when committing the new one failed.
+      throw e;
     }
   }
 

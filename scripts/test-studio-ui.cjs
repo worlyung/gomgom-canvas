@@ -1,0 +1,50 @@
+// Isolated UI test; image responses are fixtures and spend no API credits.
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+const assert=require('node:assert/strict'), fs=require('node:fs'), path=require('node:path');
+const sharp=require('sharp');
+const base=process.env.CANVAS_TEST_URL||'http://127.0.0.1:3011';
+const out=process.env.CARDNEWS_TEST_OUTPUT||path.join(require('node:os').tmpdir(),'studio-ui');
+fs.mkdirSync(out,{recursive:true});
+(async()=>{
+ const browser=await chromium.launch({channel:'msedge',headless:true});
+ try {
+ const ctx=await browser.newContext({viewport:{width:1440,height:1000}}), p=await ctx.newPage(), errors=[];
+ p.on('pageerror',e=>errors.push(e.message));
+ let last;
+ const png='data:image/png;base64,'+(await sharp({create:{width:1536,height:864,channels:3,background:'#d4b57c'}}).png().toBuffer()).toString('base64');
+ await p.route('**/api/generate',r=>{last=r.request().postDataJSON();return r.fulfill({json:{images:Array.from({length:last.n||1},()=>png)}});});
+ await p.goto(base);await p.getByRole('heading',{name:'오늘의 아이디어를 펼쳐보세요'}).waitFor({timeout:120000});
+ assert.equal(await p.locator('.studio-composer .studio-tools').count(),0);
+ const header=p.locator('.studio-header');
+ await header.getByRole('button',{name:'생성 이력',exact:true}).click();
+ assert.equal(await header.getByRole('button',{name:'생성 이력',exact:true}).getAttribute('aria-pressed'),'true');
+ await header.getByRole('button',{name:'레이어',exact:true}).click();
+ assert.equal(await header.getByRole('button',{name:'생성 이력',exact:true}).getAttribute('aria-pressed'),'false');
+ await header.getByRole('button',{name:'레이어',exact:true}).click();
+ await header.getByRole('button',{name:'작업 설정',exact:true}).click();
+ await p.getByRole('menuitem',{name:'미니맵 표시',exact:true}).click();
+ await header.getByRole('button',{name:'작업 설정',exact:true}).click();
+ await p.getByRole('menuitem',{name:'미니맵 숨기기',exact:true}).click();
+ await p.screenshot({path:path.join(out,'studio-start.png')});
+ await p.locator('#studio-prompt').fill('국악 공연 포스터를 16:9로 만들어 주세요');
+ await p.getByText('문구·참조 세부 지시',{exact:true}).click();
+ await p.getByLabel('이미지에 넣을 정확한 문구',{exact:true}).fill('가을밤, 국악과 만나다');
+ await p.getByLabel('참조에서 유지할 특징',{exact:true}).fill('붉은 의상');
+ await p.getByLabel('시안 수',{exact:true}).selectOption('2');
+ await p.getByRole('button',{name:'이미지 생성',exact:true}).click();
+ await p.waitForFunction(()=>JSON.parse(localStorage.getItem('canvas-state')||'{}').elements?.filter(x=>x.type==='image').length===2);
+ assert.equal(last.n,2);assert.equal(last.size,'1536x864');assert(last.prompt.includes('가을밤, 국악과 만나다'));assert(!last.prompt.includes('붉은 의상'));
+ await p.screenshot({path:path.join(out,'studio-variants.png')});
+ assert.equal(await p.locator('.studio-composer').getByText('⬇ ZIP (2)',{exact:true}).count(),0);
+ await header.getByRole('button',{name:'실행취소',exact:true}).click();
+ await header.getByRole('button',{name:'다시실행',exact:true}).click();
+ await p.locator('#studio-prompt').press('Control+Enter');
+ await p.waitForFunction(()=>JSON.parse(localStorage.getItem('canvas-state')||'{}').elements?.filter(x=>x.type==='image').length===4);
+ assert.equal(last.refs.length,2);assert(last.prompt.includes('붉은 의상'));
+ await p.getByRole('button',{name:'작업판·내보내기',exact:true}).click();
+ await p.getByRole('button',{name:'판 만들기',exact:true}).waitFor();await p.keyboard.press('Escape');await p.waitForTimeout(400);
+ await p.setViewportSize({width:390,height:844});await p.locator('.studio-composer').evaluate(el=>el.scrollTop=0);await p.screenshot({path:path.join(out,'studio-mobile.png')});
+ assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ assert.deepEqual(errors,[]);console.log('PASS studio start, 2 variants preserved, exact copy, reference instructions, ratio, artboard, mobile width');
+ } finally {await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

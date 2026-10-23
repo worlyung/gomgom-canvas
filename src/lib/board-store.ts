@@ -6,7 +6,7 @@ import "server-only";
 import fs from "fs";
 import path from "path";
 
-const ROOT = path.join(process.cwd(), "..", "boards");
+const ROOT = process.env.CANVAS_BOARDS_DIR || path.join(process.cwd(), "..", "boards");
 
 export interface BoardMeta {
   id: string;
@@ -60,17 +60,24 @@ export function writeBoard(
   updatedBy: string,
 ) {
   fs.mkdirSync(imagesDir(id), { recursive: true });
-  fs.writeFileSync(
-    path.join(dir(id), "state.json"),
-    JSON.stringify(state),
-    "utf8",
-  );
+  const previous = readState(id);
+  if (previous) {
+    const historyDir = path.join(dir(id), "versions");
+    fs.mkdirSync(historyDir, {recursive:true});
+    fs.writeFileSync(path.join(historyDir, `${Date.now()}-${crypto.randomUUID()}.json`), JSON.stringify({meta:readMeta(id),state:previous,images:readImages(id)}));
+    const versions=fs.readdirSync(historyDir).sort();
+    // Keep up to ten complete snapshots; their assets survive current-image pruning.
+    for(const file of versions.slice(0,-10)) fs.unlinkSync(path.join(historyDir,file));
+  }
+  const statePath=path.join(dir(id),"state.json"),tempState=statePath+".tmp";
+  fs.writeFileSync(tempState,JSON.stringify(state),"utf8");
+  fs.renameSync(tempState,statePath);
   const meta: BoardMeta = {
     id,
     name,
     updatedAt: new Date().toISOString(),
     updatedBy: updatedBy || "이름 없음",
-    imageCount: storedImageIds(id).length,
+    imageCount: Array.isArray((state as {images?:unknown[]})?.images)?(state as {images:unknown[]}).images.length:storedImageIds(id).length,
   };
   fs.writeFileSync(
     path.join(dir(id), "meta.json"),
@@ -137,4 +144,14 @@ export function pruneImages(boardId: string, keep: string[]) {
 
 export function deleteBoard(id: string) {
   fs.rmSync(dir(id), { recursive: true, force: true });
+}
+
+export function listVersions(id:string) {
+  const folder=path.join(dir(id),"versions");
+  if(!fs.existsSync(folder))return [];
+  return fs.readdirSync(folder).filter(f=>/^\d+-[a-f0-9-]+\.json$/.test(f)).sort().reverse().map(file=>({id:file,createdAt:new Date(Number(file.split("-")[0])).toISOString()}));
+}
+export function readVersion(id:string,version:string) {
+  if(!/^\d+-[a-f0-9-]+\.json$/.test(version))return null;
+  try{return JSON.parse(fs.readFileSync(path.join(dir(id),"versions",version),"utf8"));}catch{return null;}
 }

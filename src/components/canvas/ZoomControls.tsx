@@ -62,7 +62,7 @@ export const ZoomControls: React.FC<ZoomControlsProps> = ({
   };
 
   return (
-    <div className="absolute bottom-4 left-4 flex-col hidden md:flex items-start gap-4 z-20">
+    <div className="absolute bottom-4 left-[368px] flex-col hidden md:flex items-start gap-4 z-30">
       <div
         className={cn(
           "flex flex-col bg-card rounded-xl overflow-clip",

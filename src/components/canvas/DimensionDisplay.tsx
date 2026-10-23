@@ -82,7 +82,6 @@ export const DimensionDisplay: React.FC<DimensionDisplayProps> = ({
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src, cropW, cropH]);
 
   // Only show for single image selection to avoid clutter

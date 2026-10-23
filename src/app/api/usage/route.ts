@@ -24,19 +24,22 @@ function costOf(usage: any, model?: string): number {
 }
 
 export async function GET() {
-  let today = { calls: 0, cost: 0 };
-  let total = { calls: 0, cost: 0 };
+  const today = { calls: 0, cost: 0, unpriced: 0 };
+  const total = { calls: 0, cost: 0, unpriced: 0 };
   try {
     const lines = fs.readFileSync(USAGE_FILE, "utf8").split("\n").filter(Boolean);
     const todayStr = new Date().toLocaleDateString("sv-SE"); // YYYY-MM-DD, 로컬(KST)
     for (const line of lines) {
       try {
         const rec = JSON.parse(line);
-        const cost = costOf(rec.usage, rec.model);
+        const unknown = rec.provider !== "openai" || !rec.usage?.input_tokens_details || typeof rec.usage.output_tokens !== "number";
+        const cost = unknown ? 0 : costOf(rec.usage, rec.model);
         total.calls++;
+        if (unknown) total.unpriced++;
         total.cost += cost;
         if (new Date(rec.ts).toLocaleDateString("sv-SE") === todayStr) {
           today.calls++;
+          if (unknown) today.unpriced++;
           today.cost += cost;
         }
       } catch {}

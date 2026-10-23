@@ -18,6 +18,7 @@ export const imageToCanvasElement = (image: PlacedImage): CanvasElement => ({
   id: image.id,
   type: "image",
   imageId: image.id, // We'll use the same ID for both
+  hidden:image.hidden, locked:image.locked, generation:image.generation,
   ...(image.promptHint && { promptHint: image.promptHint }),
   transform: {
     x: image.x,
@@ -33,7 +34,7 @@ export const imageToCanvasElement = (image: PlacedImage): CanvasElement => ({
       },
     }),
   },
-  zIndex: 0, // We'll use array order instead
+  zIndex: image.z || 0,
   width: image.width,
   height: image.height,
 });
@@ -42,8 +43,9 @@ export const imageToCanvasElement = (image: PlacedImage): CanvasElement => ({
 export const textToCanvasElement = (t: PlacedText): CanvasElement => ({
   id: t.id,
   type: "text",
+  hidden:t.hidden,locked:t.locked,
   transform: { x: t.x, y: t.y, scale: 1, rotation: t.rotation },
-  zIndex: 0,
+  zIndex: t.z || 0,
   text: t.text,
   fontSize: t.fontSize,
   fill: t.fill,
@@ -57,8 +59,9 @@ export const textToCanvasElement = (t: PlacedText): CanvasElement => ({
 export const shapeToCanvasElement = (sp: PlacedShape): CanvasElement => ({
   id: sp.id,
   type: "shape",
+  hidden:sp.hidden,locked:sp.locked,
   transform: { x: sp.x, y: sp.y, scale: 1, rotation: sp.rotation },
-  zIndex: 0,
+  zIndex: sp.z || 0,
   width: sp.width,
   height: sp.height,
   kind: sp.kind,
@@ -87,6 +90,7 @@ export const videoToCanvasElement = (video: PlacedVideo): CanvasElement => ({
   id: video.id,
   type: "video",
   videoId: video.id, // We'll use the same ID for both
+  hidden:video.hidden,locked:video.locked,generation:video.generation,
   transform: {
     x: video.x,
     y: video.y,
@@ -101,7 +105,7 @@ export const videoToCanvasElement = (video: PlacedVideo): CanvasElement => ({
       },
     }),
   },
-  zIndex: 0, // We'll use array order instead
+  zIndex: video.z || 0,
   width: video.width,
   height: video.height,
   duration: video.duration,

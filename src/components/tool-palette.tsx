@@ -17,6 +17,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { ShapeKind } from "@/types/canvas";
+import { Upload, Type, Shapes, StickyNote, Paintbrush, Scissors, Expand, Images } from "lucide-react";
+
+function ToolIcon({glyph}: {glyph:string}) {
+  const Icon = ({"📎":Upload,"T":Type,"◇":Shapes,"📝":StickyNote,"🖌":Paintbrush,"✂️":Scissors,"⤢":Expand,"🗂":Images} as Record<string,typeof Upload>)[glyph] || Images;
+  return <Icon size={18} strokeWidth={1.6} aria-hidden="true" />;
+}
 
 interface Props {
   onAddText: () => void;
@@ -45,8 +51,8 @@ const FIX_ACTIONS = [
 ];
 
 const CUT_ACTIONS = [
-  { action: "cutout", label: "✂️ 오려내기 — 원본 그대로, 배경만 투명 (무료)" },
-  { action: "removebg", label: "🫥 배경 제거 — AI가 피사체를 다시 그림" },
+  { action: "removebg", label: "✂️ 배경 제거 — OpenAI" },
+  { action: "cutout", label: "무료 배경 제거 — 원본 보존" },
 ];
 
 const EXPAND_ACTIONS = [
@@ -73,9 +79,10 @@ function ToolButton({
           <button
             onClick={onClick}
             disabled={disabled}
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-lg transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent"
+            aria-label={label}
+            className="studio-tool-button"
           >
-            {glyph}
+            <ToolIcon glyph={glyph}/><small>{label.split(" — ")[0]}</small>
           </button>
         </TooltipTrigger>
         <TooltipContent side="right">
@@ -107,9 +114,10 @@ function MenuTool({
               <DropdownMenuTrigger asChild disabled={disabled}>
                 <button
                   disabled={disabled}
-                  className="flex h-10 w-10 items-center justify-center rounded-xl text-lg transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent"
+                  aria-label={label}
+                  className="studio-tool-button"
                 >
-                  {glyph}
+                  <ToolIcon glyph={glyph}/><small>{label.split(" — ")[0]}</small>
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="right" align="start" className="w-72">
@@ -137,7 +145,7 @@ export function ToolPalette({
   const need = imageSelected ? "" : " (이미지를 한 장 고르세요)";
 
   return (
-    <div className="fixed left-4 top-1/2 z-30 hidden -translate-y-1/2 flex-col gap-0.5 rounded-2xl border bg-card/95 p-1.5 shadow-lg backdrop-blur md:flex">
+    <div className="studio-palette" aria-label="캔버스 도구">
       {/* --- 얹기: 캔버스에 요소를 올린다 --- */}
       <ToolButton
         glyph="📎"

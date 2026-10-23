@@ -37,12 +37,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (Array.isArray(keepImageIds)) pruneImages(boardId, keepImageIds);
   const meta = writeBoard(
     boardId,
     String(name || "이름 없는 보드"),
     state,
     String(updatedBy || ""),
   );
+  if (Array.isArray(keepImageIds)) pruneImages(boardId, keepImageIds);
   return NextResponse.json({ ok: true, meta });
 }

@@ -1,6 +1,8 @@
 // gpt-image-2 생성 흐름 (fal 대체): 선택 이미지 = 참조(F-04, 최대 16장) → /api/generate → 캔버스 배치
 import React from "react";
 import { genFetch, isCancel } from "@/lib/generation-abort";
+import { normalizeSize, sizeForAspect } from "@/lib/image-sizes";
+import { loadOutputImage } from "@/lib/canvas-output";
 import type { PlacedImage } from "@/types/canvas";
 import { ToastAction, type ToastActionElement } from "@/components/ui/toast";
 
@@ -25,6 +27,11 @@ function retryAction(fn: () => void): ToastActionElement {
 }
 
 interface RunDeps {
+  n?: number;
+  workspaceLeft?: number;
+  workspaceRight?: number;
+  workspaceBottom?: number;
+  setViewport?: (viewport: {x:number; y:number; scale:number}) => void;
   images: PlacedImage[];
   selectedIds: string[];
   prompt: string;
@@ -49,6 +56,10 @@ interface RunDeps {
 
 // 생성 이력 (F-10) — localStorage 기록, history-panel이 구독
 export interface HistoryEntry {
+  model?: string;
+  provider?: string;
+  referenceIds?: string[];
+  resultIds?: string[];
   ts: string;
   kind: string; // 생성 | 부분수정 | 글자수정 | 사이즈 전개 | 카드뉴스
   prompt: string;
@@ -113,10 +124,8 @@ export const placeholderSrc = (() => {
 
 // 원본 픽셀 크기에 가장 가까운 지원 출력 크기
 function pickSize(w: number, h: number): string {
-  const ratio = w / h;
-  if (ratio > 1.2) return "1536x1024";
-  if (ratio < 0.83) return "1024x1536";
-  return "1024x1024";
+  const exact = normalizeSize(w, h);
+  return "value" in exact ? exact.value : sizeForAspect(w, h);
 }
 
 // 사이즈 전개 (아웃페인팅): 원본을 목표 비율 캔버스에 넣고 빈 영역만 이어 그리기
@@ -219,7 +228,7 @@ export async function runExpand(deps: {
   }
 }
 
-// 배경 제거: 이미 만든 이미지에서 피사체만 남긴 투명 PNG (transparent=true → gpt-image-1)
+// 기본 배경 제거: OpenAI 이미지 편집으로 투명 PNG 생성.
 export async function runRemoveBackground(deps: {
   image: PlacedImage;
   quality: string;
@@ -265,6 +274,8 @@ export async function runRemoveBackground(deps: {
         quality,
         refs: [ref],
         transparent: true,
+        provider: "openai",
+        openaiModel: "gpt-image-2.5-sunburst",
       }),
     });
     const j = await resp.json();
@@ -618,7 +629,7 @@ export async function runOpenAIGeneration(deps: RunDeps) {
     x = first.x + first.width + 20;
     y = first.y;
   } else {
-    x = (canvasSize.width / 2 - viewport.x) / viewport.scale - dispW / 2;
+    x = ((canvasSize.width + (deps.workspaceLeft || 0)) / 2 - viewport.x) / viewport.scale - dispW / 2;
     y = (canvasSize.height / 2 - viewport.y) / viewport.scale - dispH / 2;
   }
 
@@ -647,6 +658,7 @@ export async function runOpenAIGeneration(deps: RunDeps) {
         prompt,
         size,
         quality,
+        n: deps.n || 1,
         refs,
         ...(transparent && { transparent: true }),
         ...(provider && { provider }),
@@ -659,7 +671,9 @@ export async function runOpenAIGeneration(deps: RunDeps) {
     if (!j.images?.length) throw new Error("결과 이미지가 없습니다");
 
     // P4 요소 뽑기: 투명으로 시켰는데 배경이 채워져 왔으면 로컬 오려내기로 보정 (무료)
-    let src: string = j.images[0];
+    const generated: PlacedImage[] = [];
+    for (let index = 0; index < j.images.length; index++) {
+    let src: string = j.images[index];
     if (transparent) {
       const { hasTransparentEdge } = await import("@/lib/alpha-check");
       if (!(await hasTransparentEdge(src))) {
@@ -673,15 +687,23 @@ export async function runOpenAIGeneration(deps: RunDeps) {
       }
     }
 
-    setImages((prev) =>
-      prev.map((img) =>
-        img.id === placeholderId
-          ? { ...img, src, promptHint: slugFromPrompt(prompt) }
-          : img,
-      ),
-    );
-    setSelectedIds([placeholderId]);
-    recordHistory({ kind: "생성", prompt, size, quality, refs: refs.length });
+    const actual = await loadOutputImage(src);
+    generated.push({id: index === 0 ? placeholderId : `${placeholderId}-${index}`, src,
+      x: x + index * (dispW + 24), y, width:dispW, height:dispW * actual.naturalHeight / actual.naturalWidth,
+      rotation:0, isGenerated:true, promptHint:slugFromPrompt(prompt),generation:{prompt,provider:deps.provider||"openai",model:j.model||(deps.provider==="gemini"?deps.geminiModel||"gemini":deps.provider==="grok"?"grok-imagine-image-2.0":deps.openaiModel||"gpt-image-2"),size,quality,referenceIds:selectedIds.slice(0,16),createdAt:new Date().toISOString()}});
+    }
+    setImages(prev => [...prev.filter(img => img.id !== placeholderId), ...generated]);
+    setSelectedIds(generated.map(img => img.id));
+    if (deps.setViewport) {
+      const left = deps.workspaceLeft || 0;
+      const availableWidth = canvasSize.width-left-(deps.workspaceRight || 0);
+      const availableHeight = canvasSize.height-160-(deps.workspaceBottom || 60);
+      const width = generated.length * (dispW + 24) - 24;
+      const height = Math.max(...generated.map(img => img.height));
+      const scale = Math.min(viewport.scale, Math.max(.1, (availableWidth-60)/width), Math.max(.1,(availableHeight-30)/height));
+      deps.setViewport({scale, x:left+(availableWidth-width*scale)/2-x*scale,y:160+(availableHeight-height*scale)/2-y*scale});
+    }
+    recordHistory({ kind: "생성", prompt, size, quality, refs: refs.length,model:generated[0]?.generation?.model,provider:deps.provider||"openai",referenceIds:selectedIds.slice(0,16),resultIds:generated.map(i=>i.id) });
     window.dispatchEvent(new Event("usage-updated"));
   } catch (error) {
     setImages((prev) => prev.filter((img) => img.id !== placeholderId));

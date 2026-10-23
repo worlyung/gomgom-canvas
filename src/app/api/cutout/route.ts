@@ -5,7 +5,6 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const maxDuration = 300;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let pipePromise: Promise<any> | null = null;
 
 function getPipe() {

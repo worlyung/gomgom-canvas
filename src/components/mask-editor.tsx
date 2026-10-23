@@ -86,6 +86,9 @@ export function MaskEditor({
   ]);
   const [activeIdx, setActiveIdx] = useState(0);
   const drawing = useRef(false);
+  const [brushSize, setBrushSize] = useState(20);
+  const [cursor, setCursor] = useState<{x:number;y:number}|null>(null);
+  const lastPoint = useRef<{x:number;y:number}|null>(null);
 
   useEffect(() => {
     const el = new window.Image();
@@ -137,7 +140,7 @@ export function MaskEditor({
   // 포인트 반지름: 곰곰님 요청으로 기존 폭/20의 30%로 축소 (1024px 기준 50px → 15px).
   // 기존 값은 "이 크기면 모델이 사물 전체를 인식한다"는 1단계 실측치였으므로,
   // 작은 점이 대상을 덜 집어낼 수 있다 — 안 먹으면 두 번 찍거나 브러시로.
-  const brushR = mode === "point" ? natural.w / 66.7 : natural.w / 24;
+  const brushR = mode === "point" ? natural.w / 66.7 : (brushSize / 2) * natural.w / screenRect.w;
   const multi = mode !== "text"; // 글자수정은 한 덩어리로 다룬다
   const hasDrawing = regions.some((r) => r.strokes.length > 0);
 
@@ -150,10 +153,14 @@ export function MaskEditor({
   };
 
   const dot = (x: number, y: number) => {
+    const previous = lastPoint.current;
+    const count = previous ? Math.ceil(Math.hypot(x-previous.x,y-previous.y)/Math.max(1,brushR/2)) : 1;
+    const strokes = Array.from({length:Math.max(1,count)},(_,i)=>({x:previous ? previous.x+(x-previous.x)*(i+1)/Math.max(1,count):x,y:previous ? previous.y+(y-previous.y)*(i+1)/Math.max(1,count):y,r:brushR}));
+    lastPoint.current = {x,y};
     setRegions((prev) =>
       prev.map((rg, i) =>
         i === activeIdx
-          ? { ...rg, strokes: [...rg.strokes, { x, y, r: brushR }] }
+          ? { ...rg, strokes: [...rg.strokes, ...strokes] }
           : rg,
       ),
     );
@@ -201,6 +208,7 @@ export function MaskEditor({
     >
       <div className="absolute inset-0 bg-black/30" onClick={onCancel} />
       <canvas
+        aria-label="부분수정 마스크"
         ref={canvasRef}
         width={natural.w}
         height={natural.h}
@@ -212,8 +220,10 @@ export function MaskEditor({
           height: screenRect.h,
           backgroundImage: `url(${image.src})`,
           backgroundSize: "100% 100%",
+          touchAction: "none",
         }}
         onPointerDown={(e) => {
+          lastPoint.current = null;
           const p = toCanvasXY(e);
           if (mode === "point") {
             dot(p.x, p.y);
@@ -223,18 +233,20 @@ export function MaskEditor({
           }
         }}
         onPointerMove={(e) => {
+          setCursor({x:e.clientX,y:e.clientY});
           if (mode !== "point" && drawing.current) {
             const p = toCanvasXY(e);
             dot(p.x, p.y);
           }
         }}
-        onPointerUp={() => (drawing.current = false)}
-        onPointerLeave={() => (drawing.current = false)}
+        onPointerUp={() => {drawing.current = false;lastPoint.current=null;}}
+        onPointerLeave={() => {drawing.current = false;lastPoint.current=null;setCursor(null);}}
       />
+      {mode !== "point" && cursor && <div aria-hidden="true" className="fixed pointer-events-none rounded-full border border-white ring-1 ring-black" style={{left:cursor.x-brushSize/2,top:cursor.y-brushSize/2,width:brushSize,height:brushSize}} />}
 
       {/* 상단 바 — 안내 + 지우기/취소/적용 */}
       <div
-        className="absolute flex items-center gap-2 rounded-xl border bg-card/95 px-3 py-2 shadow-lg backdrop-blur"
+        className="absolute flex flex-wrap items-center gap-2 rounded-xl border bg-card/95 px-3 py-2 shadow-lg backdrop-blur max-w-[95vw]"
         style={{ left: screenRect.x, top: Math.max(8, screenRect.y - 52) }}
       >
         <span className="text-xs text-muted-foreground">
@@ -246,6 +258,7 @@ export function MaskEditor({
                 ? "고칠 부분을 칠하세요 — 여러 곳이면 오른쪽 '영역 추가'"
                 : "고칠 것을 콕 찍으세요 — 여러 곳이면 오른쪽 '영역 추가'"}
         </span>
+        {mode !== "point" && <label className="flex items-center gap-2 text-xs whitespace-nowrap">브러시 크기<input aria-label="브러시 크기" type="range" min={2} max={120} step={1} value={brushSize} onChange={e=>setBrushSize(Number(e.target.value))} className="w-24"/><span className="w-10">{brushSize}px</span></label>}
         {mode === "text" && (
           <input
             value={newText}

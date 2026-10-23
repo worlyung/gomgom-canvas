@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PAPER_PRESETS, mmToPx, DEFAULT_DPI } from "@/lib/artboard";
+import { MAX_EXPORT_PIXELS } from "@/lib/canvas-output";
 import type { Artboard } from "@/types/canvas";
 
 interface Props {
@@ -50,7 +51,7 @@ export function ArtboardDialog({
   let w = preset.id === "custom" ? Number(customW) || 0 : preset.w;
   let h = preset.id === "custom" ? Number(customH) || 0 : preset.h;
   if (landscape) [w, h] = [h, w];
-  const valid = w >= 50 && h >= 50 && w <= 3000 && h <= 3000;
+  const valid = w >= 50 && h >= 50 && Math.max(mmToPx(w), mmToPx(h)) <= 16384 && mmToPx(w) * mmToPx(h) <= MAX_EXPORT_PIXELS;
   const name =
     preset.id === "custom" ? `${w}x${h}mm` : `${preset.id} ${landscape ? "가로" : "세로"}`;
 
@@ -136,7 +137,7 @@ export function ArtboardDialog({
           <div className="text-xs text-muted-foreground">
             {valid
               ? `${w}×${h}mm → ${mmToPx(w)}×${mmToPx(h)}px (${DEFAULT_DPI}dpi)`
-              : "50~3000mm 사이로 넣어 주세요"}
+              : "50mm 이상, 6천만 픽셀·긴 변 16,384px 이하로 줄여 주세요"}
           </div>
           <Button
             className="w-full"

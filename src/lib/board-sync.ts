@@ -5,7 +5,9 @@ import type {
   PlacedNote,
   PlacedShape,
   PlacedText,
+  PlacedVideo,
 } from "@/types/canvas";
+import type { StudioExtras } from "@/lib/studio-project";
 
 export interface BoardState {
   images: Omit<PlacedImage, "src">[] & { src?: string }[];
@@ -17,6 +19,8 @@ export interface BoardState {
 }
 
 export interface SaveArgs {
+  videos?: PlacedVideo[];
+  extras?: StudioExtras;
   boardId: string;
   name: string;
   myName: string;
@@ -63,6 +67,8 @@ export async function saveBoard(a: SaveArgs) {
     texts: a.texts,
     shapes: a.shapes,
     notes: a.notes,
+    videos: a.videos || [],
+    extras: a.extras,
     viewport: a.viewport,
     artboard: a.artboard ?? null,
   };
@@ -102,6 +108,8 @@ export async function loadBoard(boardId: string) {
 
   return {
     meta: j.meta,
+    videos: (j.state?.videos || []) as PlacedVideo[],
+    extras: j.state?.extras as StudioExtras | undefined,
     images,
     texts: (j.state?.texts || []) as PlacedText[],
     shapes: (j.state?.shapes || []) as PlacedShape[],

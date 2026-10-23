@@ -10,12 +10,14 @@ const buttonVariants = cva(
     "outline-none",
     "font-heading font-medium transition-all",
     "disabled:pointer-events-none disabled:opacity-50",
+    "aria-pressed:bg-emerald-900 aria-pressed:text-white",
     // Svg icons style
     "gap-1.5 [&>svg]:stroke-[1.5] [&>svg]:h-6 [&>svg]:w-6",
   ],
   {
     variants: {
       variant: {
+        outline: "border border-slate-300 bg-white text-slate-800 hover:bg-slate-50",
         default: [
           "bg-transparent text-content-strong border-stroke-strong",
           "hover:text-content-stronger hover:border-stroke-stronger",

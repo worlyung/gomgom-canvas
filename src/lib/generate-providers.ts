@@ -2,6 +2,7 @@
 import "server-only";
 import { getProvider, OPENAI_EDIT_MODEL, type ProviderId } from "@/lib/providers";
 import { getKey } from "@/lib/server-keys";
+import sharp from "sharp";
 
 export interface GenArgs {
   prompt: string;
@@ -203,7 +204,12 @@ export async function generateWith(
     throw new Error(`${provider.label}는 참조 생성을 지원하지 않습니다`);
   }
 
-  if (providerId === "gemini") return runGemini(key, args);
-  if (providerId === "grok") return runGrok(key, args);
-  return runOpenAI(key, args);
+  const result = await (providerId === "gemini" ? runGemini(key, args) : providerId === "grok" ? runGrok(key, args) : runOpenAI(key, args));
+  // Providers may return JPEG bytes even when requesting/defaulting to PNG.
+  result.images = await Promise.all(result.images.map(async image => {
+    const bytes = Buffer.from(image.split(",", 2)[1], "base64");
+    const png = await sharp(bytes).png().toBuffer();
+    return `data:image/png;base64,${png.toString("base64")}`;
+  }));
+  return result;
 }

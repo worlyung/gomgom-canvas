@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 
 interface Usage {
-  today: { calls: number; cost: number };
-  total: { calls: number; cost: number };
+  today: { calls: number; cost: number; unpriced?: number };
+  total: { calls: number; cost: number; unpriced?: number };
   krwPerUsd: number;
 }
 
@@ -31,14 +31,15 @@ export function UsageBadge() {
     `₩${Math.round(usd * usage.krwPerUsd).toLocaleString()}`;
 
   return (
-    <div className="fixed top-4 right-4 z-50 rounded-lg border border-border/40 bg-card/95 px-3 py-1.5 text-xs shadow-sm backdrop-blur">
+    <div className="fixed top-16 right-4 z-50 rounded-lg border border-border/40 bg-card/95 px-4 py-3 text-sm shadow-sm backdrop-blur">
       <span className="font-medium">
         오늘 {usage.today.calls}회 · {krw(usage.today.cost)}
       </span>
       <span className="text-muted-foreground">
         {" "}
-        / 누적 {usage.total.calls}회 · {krw(usage.total.cost)} (예상)
+        / 누적 {usage.total.calls}회 · {krw(usage.total.cost)} (참고 추정)
       </span>
+      {!!usage.total.unpriced && <span className="block text-amber-700">비용 미집계 {usage.total.unpriced}회 별도 · 실제 청구액은 서비스에서 확인</span>}
     </div>
   );
 }
