@@ -213,6 +213,8 @@ details.more[open] summary { margin-bottom: 10px; }
     linear-gradient(var(--tick), var(--tick)) right bottom / 14px 1px no-repeat, linear-gradient(var(--tick), var(--tick)) right bottom / 1px 14px no-repeat; }
 .sheetcap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; font: 11px/1.4 var(--font-data); color: var(--faint); letter-spacing: 0.02em; padding-inline: 2px; }
 #map { width: 100%; display: flex; justify-content: center; }
+#map { cursor:grab; }
+#map.panning, #map.panning svg [data-id] { cursor:grabbing; }
 #map svg { width: 100%; height: clamp(360px, 60vh, 760px); display: block; }
 #map svg [data-id] { cursor: pointer; transition: opacity 0.12s; }
 #map svg [data-id]:hover { opacity: 0.8; }
@@ -404,7 +406,7 @@ textarea.field { font-family: var(--font-data); font-size: 12px; line-height: 1.
       <section class="card">
         <h2 id="styleHeading">색과 스타일</h2>
         <span class="lbl">디자인</span>
-        <div class="seg" id="look" aria-label="디자인 방식"><button data-v="flat">기본</button><button data-v="glass">유리</button><button data-v="paper">입체</button><button data-v="soft">소프트</button><button data-v="neon">네온</button></div>
+        <div class="seg" id="look" aria-label="디자인 방식"><button data-v="flat">기본</button><button data-v="glass">유리</button><button data-v="paper">입체</button><button data-v="soft">소프트</button><button data-v="neon">네온</button><button data-v="dots">도트</button><button data-v="regionDots">지역별 점</button></div>
         <p class="note" id="lookNote" hidden></p>
         <span class="lbl">색 조합</span>
         <div class="themes" id="presets"></div>
@@ -603,14 +605,14 @@ textarea.field { font-family: var(--font-data); font-size: 12px; line-height: 1.
           <button class="btn sm" id="zoomTarget">선택 지역 맞춤</button>
           <button class="btn sm" id="zoomFit">전체 맞춤</button>
           <button class="btn sm" id="dokdoSecret" hidden aria-label="독도 확대 상자 열기" title="동쪽 끝에 작은 발견">작은 섬 하나 ↗</button>
-          <span class="note">화면 보기만 확대 · Ctrl/⌘ + 휠 · 흩어진 섬은 큰 섬 중심, 모든 섬은 전체 맞춤</span>
+          <span class="note">좌클릭 드래그로 지도 이동 · Ctrl/⌘ + 휠로 확대 · ‘하나씩 꾸미기’에서는 지역 이동, 빈 곳은 지도 이동 · 모든 섬은 전체 맞춤</span>
         </div>
         <div class="clickbar" id="clickBar">
           <span>지도를 누르면</span>
           <div class="seg" id="clickAction"><button data-v="main" id="clickMain">지역 고르기</button><button data-v="label">이름 넣기·빼기</button><button data-v="edit">하나씩 꾸미기</button><button data-v="group" id="clickGroup">그룹 칠하기</button></div>
         </div>
         <div class="editbox" id="editBox" hidden>
-          <p class="note">‘자동 붙이기’를 켜면 실제 지도·벌려 놓기에서 원래 이웃의 경계 가까이 끌 때 붙습니다(12px). Alt/Option을 누르면 자유 이동합니다.</p>
+          <p class="note">‘자동 붙이기’를 켜면 실제 지도·벌려 놓기는 원래 이웃 경계에 붙고(12px), 타일은 빈 격자 칸에 맞습니다. Alt/Option을 누르면 자유 이동합니다.</p>
           <p class="note" id="editEmpty">꾸밀 지역을 지도에서 누르세요. 누른 채로 끌면 그 지역만 옮겨집니다.</p>
           <div class="editrow" id="editForm" hidden>
             <b id="editName"></b>
@@ -669,15 +671,16 @@ textarea.field { font-family: var(--font-data); font-size: 12px; line-height: 1.
 </script>
 <script src="data/base.js"></script>
 <script src="data/stats.js"></script>
-<script src="render.js"></script>
+<script src="render.js?v=20261023b"></script>
 <script src="datafill.js"></script>
 <script src="pins.js"></script>
 <script src="colors.js"></script>
+<script src="infographic.js"></script>
 <script src="advanced.js"></script>
-<script src="state.js"></script>
+<script src="state.js?v=20261023b"></script>
 <script src="pptx.js"></script>
 <script src="advanced-ui.js"></script>
-<script src="viewport.js"></script>
+<script src="viewport.js?v=20261023b"></script>
 <dialog id="dokdoDialog" aria-labelledby="dokdoTitle">
   <form method="dialog"><button class="btn sm" style="float:right" aria-label="독도 확대 상자 닫기">닫기 ×</button></form>
   <p class="note">작은 섬을 찾으셨네요 👀</p>
@@ -687,6 +690,6 @@ textarea.field { font-family: var(--font-data); font-size: 12px; line-height: 1.
   <p class="note">울릉군 경계 데이터의 독도 도형을 확대했습니다. 이 상자는 화면에서만 표시됩니다.</p>
 </dialog>
 <script src="dokdo.js"></script>
-<script src="app.js"></script>
+<script src="app.js?v=20261023b"></script>
 </body>
 </html>
