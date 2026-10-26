@@ -204,7 +204,7 @@ export async function runExpand(deps: {
     setImages((prev) =>
       prev.map((img) =>
         img.id === placeholderId
-          ? { ...img, src: j.images[0], promptHint: `${image.promptHint || "이미지"}-전개` }
+          ? { ...img, src: j.images[0], promptHint: `${image.promptHint || "이미지"}-전개`, generation: {prompt: `사이즈 전개 → ${target}`, provider: "openai", model: j.model || "gpt-image-2", size: target, quality, referenceIds: [image.id], createdAt: new Date().toISOString()} }
           : img,
       ),
     );
@@ -289,6 +289,7 @@ export async function runRemoveBackground(deps: {
               ...img,
               src: j.images[0],
               promptHint: `${image.promptHint || "이미지"}-누끼`,
+              generation: {prompt: "배경 제거 (투명 PNG)", provider: "openai", model: j.model || "gpt-image-2", size, quality, referenceIds: [image.id], createdAt: new Date().toISOString()},
             }
           : img,
       ),
@@ -365,6 +366,7 @@ export async function runCutout(deps: {
               ...img,
               src: cut,
               promptHint: `${image.promptHint || "이미지"}-오려냄`,
+              generation: {prompt: "배경 오려내기 (원본 보존)", provider: "local", model: "cutout", size: "원본", quality: "-", referenceIds: [image.id], createdAt: new Date().toISOString()},
             }
           : img,
       ),
@@ -555,7 +557,7 @@ export async function runMaskEdit(deps: {
     setImages((prev) =>
       prev.map((img) =>
         img.id === placeholderId
-          ? { ...img, src: j.images[0], promptHint: slugFromPrompt(prompt) }
+          ? { ...img, src: j.images[0], promptHint: slugFromPrompt(prompt), generation: {prompt, provider: "openai", model: j.model || "gpt-image-2", size: editSize, quality, referenceIds: [image.id], createdAt: new Date().toISOString()} }
           : img,
       ),
     );

@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import { copyBundle } from '../src/lib/work-bundles.ts';
+const original = {images:[{id:'a',src:'data:image/png;base64,a',x:10,y:20,width:100,height:80,rotation:25,z:2,locked:true},{id:'b',src:'data:image/png;base64,b',x:130,y:20,width:100,height:80,rotation:0,z:3,generation:{referenceIds:['a','outside']}}],texts:[{id:'t',text:'축제',x:10,y:120,z:4}],shapes:[],notes:[{id:'n',x:50,y:50,targetX:20,targetY:25}],videos:[]};
+const snapshot = structuredClone(original);
+const result = copyBundle(original,500,400,20);
+assert.deepEqual(original,snapshot);
+assert.equal(result.images[0].x,500);
+assert.equal(result.images[1].x-result.images[0].x,120);
+assert.equal(result.images[0].rotation,25);
+assert.equal(result.images[0].locked,false);
+assert.deepEqual(result.images[1].generation.referenceIds,[result.images[0].id]);
+assert.equal(result.notes[0].targetX,510);
+assert.equal(result.notes[0].targetY,405);
+assert.equal(result.texts[0].z,23);
+assert.notEqual(copyBundle(original,0,0,0).images[0].id,result.images[0].id);
+result.texts[0].text='다른 행사';
+assert.equal(original.texts[0].text,'축제');
+console.log('작업 묶음: 원본 보존, 독립 ID, 배치·회전·순서·메모·참조 복제 통과');

@@ -162,6 +162,10 @@ import {
 } from "@/lib/handlers/openai-handler";
 import { MaskEditor } from "@/components/mask-editor";
 import { HistoryPanel } from "@/components/history-panel";
+import { RevisionLinks } from "@/components/canvas/RevisionLinks";
+import { CompanyAssets } from "@/components/canvas/CompanyAssets";
+import { WorkBundles } from "@/components/canvas/WorkBundles";
+import { copyBundle } from "@/lib/work-bundles";
 import { GeneratingIndicator } from "@/components/generating-indicator";
 import {
   DropdownMenu,
@@ -271,6 +275,7 @@ export default function OverlayPage() {
     rect: { x: number; y: number; w: number; h: number };
   } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [revisionLinksVisible, setRevisionLinksVisible] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false); // 레이어 패널 (P1)
   const [artboard, setArtboard] = useState<Artboard | null>(null); // 포스터 판 (P2)
   const [artboardOpen, setArtboardOpen] = useState(false);
@@ -3939,6 +3944,7 @@ export default function OverlayPage() {
                     </Layer>
                   </Stage>
                 )}
+                {isCanvasReady && revisionLinksVisible && !isBaking && <RevisionLinks images={images} viewport={viewport} />}
 
                 {/* 메모 편집 — 메모지 위에 바로 얹는다 (끄는 중엔 숨김) */}
                 {(() => {
@@ -4668,6 +4674,39 @@ export default function OverlayPage() {
                       </DropdownMenu>
                     )}
             <button onClick={() => {setHistoryOpen(v => !v);setLayersOpen(false);}} aria-pressed={historyOpen}>생성 이력</button>
+            <button onClick={() => setRevisionLinksVisible(v => !v)} aria-pressed={revisionLinksVisible}>수정 이력 {revisionLinksVisible ? "숨기기" : "보기"}</button>
+            <WorkBundles content={{
+              images: images.filter(i => selectedIds.includes(i.id)),
+              texts: texts.filter(i => selectedIds.includes(i.id)),
+              shapes: shapes.filter(i => selectedIds.includes(i.id)),
+              notes: notes.filter(i => selectedIds.includes(i.id)),
+              videos: videos.filter(i => selectedIds.includes(i.id)),
+            }} onInsert={async source => {
+              const topZ = Math.max(0, ...[...images, ...texts, ...shapes, ...videos].map(i => i.z ?? 0));
+              const bundle = copyBundle(source, (canvasSize.width / 2 - viewport.x) / viewport.scale,
+                (canvasSize.height / 2 - viewport.y) / viewport.scale, topZ);
+              for (const item of bundle.images) await canvasStorage.saveImage(item.src, item.id);
+              for (const item of bundle.videos) await canvasStorage.saveVideo(item.src, item.duration, item.id);
+              saveToHistory();
+              setImages(prev => [...prev, ...bundle.images]); setTexts(prev => [...prev, ...bundle.texts]);
+              setShapes(prev => [...prev, ...bundle.shapes]); setNotes(prev => [...prev, ...bundle.notes]);
+              setVideos(prev => [...prev, ...bundle.videos]);
+              setSelectedIds([...bundle.images, ...bundle.texts, ...bundle.shapes, ...bundle.notes, ...bundle.videos].map(i => i.id));
+              toast({title: "작업 묶음을 복제했어요", description: "원본과 별도로 문구와 이미지를 수정할 수 있어요."});
+            }} />
+            <CompanyAssets onInsert={async ({src, width: originalWidth, height: originalHeight, name}) => {
+              const scale = Math.min(400 / originalWidth, 300 / originalHeight, 1);
+              const width = originalWidth * scale, height = originalHeight * scale;
+              const id = `ci-${crypto.randomUUID()}`;
+              await canvasStorage.saveImage(src, id);
+              saveToHistory();
+              const z = Math.max(0, ...images.map(i=>i.z||0), ...shapes.map(i=>i.z||0), ...texts.map(i=>i.z||0), ...videos.map(i=>i.z||0)) + 1;
+              setImages(prev => [...prev, {id, src, width, height, rotation: 0, z, promptHint: name,
+                x: (canvasSize.width / 2 - viewport.x) / viewport.scale - width / 2,
+                y: (canvasSize.height / 2 - viewport.y) / viewport.scale - height / 2}]);
+              setSelectedIds([id]);
+              toast({title: "예술숲 CI를 넣었어요"});
+            }} />
             <button onClick={() => setArtboardOpen(true)}>작업판·내보내기</button>
             <button onClick={() => setUsageOpen(v => !v)} aria-expanded={usageOpen}>사용량</button>
             <DropdownMenu>
