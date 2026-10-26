@@ -8,7 +8,8 @@ const assets = [
   { file: "horizontal.png", name: "가로형 CI" },
   { file: "alternate.png", name: "가로형 CI · 다른 버전" },
   { file: "portrait.png", name: "세로형 CI 원본" },
-  { file: "english.png", name: "영문 CI 시안 원본" },
+  { file: "english-horizontal.png", name: "영문 CI · 가로형 (투명)" },
+  { file: "english-vertical.png", name: "영문 CI · 세로형 (투명)" },
 ];
 
 export function CompanyAssets({ onInsert }: {
