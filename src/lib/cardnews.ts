@@ -34,6 +34,14 @@ export interface NewsCard {
   layout: CardLayout;
   background: string;
   photo?: string;
+  logo?: {
+    src: string;
+    name: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
   focalX: number;
   focalY: number;
   zoom: number;
@@ -120,6 +128,7 @@ export function makeCard(
     layout,
     background: source?.background || "#203c34",
     photo: source?.photo,
+    logo: source?.logo ? { ...source.logo } : undefined,
     focalX: source?.focalX ?? 50,
     focalY: source?.focalY ?? 50,
     zoom: source?.zoom ?? 1,
@@ -239,7 +248,8 @@ export async function drawCard(
   await ensureCardFonts(card);
   // Load before painting so a failed photo never silently exports as a blank background.
   const im = card.photo ? await imageFrom(card.photo) : null;
-  paintCard(canvas, card, page, total, im);
+  const logo = card.logo ? await imageFrom(card.logo.src) : null;
+  paintCard(canvas, card, page, total, im, logo);
 }
 
 // The interactive preview reuses its decoded photo on every animation frame.
@@ -249,6 +259,7 @@ export function paintCard(
   page: number,
   total: number,
   im: HTMLImageElement | null,
+  logo: HTMLImageElement | null = null,
 ) {
   const ctx = canvas.getContext("2d")!;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -283,6 +294,14 @@ export function paintCard(
     870,
     1270,
   );
+  if (logo && card.logo)
+    ctx.drawImage(
+      logo,
+      card.logo.x,
+      card.logo.y,
+      card.logo.width,
+      card.logo.height,
+    );
   ctx.restore();
 }
 
@@ -394,6 +413,18 @@ export async function cardLayers(
     rotation: 0,
     z: z++,
   });
+  if (card.logo)
+    images.push({
+      id: cardId(),
+      src: card.logo.src,
+      promptHint: card.logo.name,
+      x: x + card.logo.x,
+      y: y + card.logo.y,
+      width: card.logo.width,
+      height: card.logo.height,
+      rotation: 0,
+      z: z++,
+    });
   return { images, shapes, texts };
 }
 
@@ -434,6 +465,21 @@ export function parseDeck(value: unknown): CardDeck {
       (typeof c.photo !== "string" ||
         c.photo.length > 12_000_000 ||
         !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(c.photo))
+    )
+      return bad();
+    if (
+      c.logo &&
+      (typeof c.logo.src !== "string" ||
+        c.logo.src.length > 12_000_000 ||
+        !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(c.logo.src) ||
+        typeof c.logo.name !== "string" ||
+        c.logo.name.length > 160 ||
+        !num(c.logo.x, 0, CARD_W) ||
+        !num(c.logo.y, 0, CARD_H) ||
+        !num(c.logo.width, 1, CARD_W) ||
+        !num(c.logo.height, 1, CARD_H) ||
+        c.logo.x + c.logo.width > CARD_W + 1 ||
+        c.logo.y + c.logo.height > CARD_H + 1)
     )
       return bad();
     for (const t of c.texts)

@@ -34,6 +34,7 @@ import {
 } from "@/lib/cardnews";
 import type { PlacedImage } from "@/types/canvas";
 import styles from "./cardnews-studio.module.css";
+import { CompanyAssets } from "./canvas/CompanyAssets";
 import {
   alignBoxes,
   snapMove,
@@ -62,6 +63,7 @@ function Preview({
   selected = [],
   onSelect,
   onMove,
+  onLogoMove,
   snapping = true,
 }: {
   card: NewsCard;
@@ -71,8 +73,19 @@ function Preview({
   snapping?: boolean;
   onSelect?: (ids: string[]) => void;
   onMove?: (positions: Position[]) => void;
+  onLogoMove?: (x: number, y: number) => void;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const logoDrag = useRef<{
+    pointerId: number;
+    cardId: string;
+    startX: number;
+    startY: number;
+    x: number;
+    y: number;
+    originalX: number;
+    originalY: number;
+  } | null>(null);
   const drag = useRef<{
     cardId: string;
     pointerId: number;
@@ -88,6 +101,9 @@ function Preview({
     image: null,
   });
   const latest = useRef({ card, page, total, selected });
+  const logo = useRef<{ src?: string; image: HTMLImageElement | null }>({
+    image: null,
+  });
   latest.current = { card, page, total, selected };
   const [error, setError] = useState("");
   function paint() {
@@ -105,13 +121,32 @@ function Preview({
             })),
           }
         : card;
-    paintCard(ref.current, view, page, total, photo.current.image);
+    const ld = logoDrag.current;
+    const painted =
+      ld?.cardId === card.id && view.logo
+        ? { ...view, logo: { ...view.logo, x: ld.x, y: ld.y } }
+        : view;
+    paintCard(
+      ref.current,
+      painted,
+      page,
+      total,
+      photo.current.image,
+      logo.current.src === card.logo?.src ? logo.current.image : null,
+    );
     const ctx = ref.current.getContext("2d")!;
     const ids = d ? d.moving.map((t) => t.id) : selected;
     ctx.save();
     ctx.strokeStyle = "#e4fa70";
     ctx.lineWidth = 3;
     ctx.setLineDash([12, 8]);
+    if (ld && painted.logo)
+      ctx.strokeRect(
+        painted.logo.x,
+        painted.logo.y,
+        painted.logo.width,
+        painted.logo.height,
+      );
     for (const t of view.texts.filter((t) => ids.includes(t.id)))
       ctx.strokeRect(
         t.x - 8,
@@ -166,11 +201,13 @@ function Preview({
   function cancelDrag() {
     cancelFrame();
     drag.current = null;
+    logoDrag.current = null;
     paint();
   }
   useEffect(() => {
     let stale = false;
     if (drag.current?.cardId !== card.id) drag.current = null;
+    if (logoDrag.current?.cardId !== card.id) logoDrag.current = null;
     if (photo.current.src === card.photo) {
       paint();
       setError("");
@@ -206,6 +243,22 @@ function Preview({
       stale = true;
     };
   }, [card]);
+  useEffect(() => {
+    let stale = false;
+    (card.logo ? imageFrom(card.logo.src) : Promise.resolve(null))
+      .then((image) => {
+        if (!stale) {
+          logo.current = { src: card.logo?.src, image };
+          paint();
+        }
+      })
+      .catch((e) => {
+        if (!stale) setError(e.message);
+      });
+    return () => {
+      stale = true;
+    };
+  }, [card.logo?.src]);
   return (
     <div className={styles.previewWrap}>
       <canvas
@@ -221,6 +274,30 @@ function Preview({
           const x = ((e.clientX - r.left) * CARD_W) / r.width,
             y = ((e.clientY - r.top) * CARD_H) / r.height;
           const ctx = ref.current.getContext("2d")!;
+          if (
+            onLogoMove &&
+            card.logo &&
+            x >= card.logo.x &&
+            x <= card.logo.x + card.logo.width &&
+            y >= card.logo.y &&
+            y <= card.logo.y + card.logo.height
+          ) {
+            e.preventDefault();
+            onSelect([]);
+            logoDrag.current = {
+              pointerId: e.pointerId,
+              cardId: card.id,
+              startX: x,
+              startY: y,
+              x: card.logo.x,
+              y: card.logo.y,
+              originalX: card.logo.x,
+              originalY: card.logo.y,
+            };
+            e.currentTarget.setPointerCapture(e.pointerId);
+            paint();
+            return;
+          }
           const t = [...card.texts]
             .reverse()
             .find(
@@ -264,6 +341,30 @@ function Preview({
           paint();
         }}
         onPointerMove={(e) => {
+          const ld = logoDrag.current;
+          if (ld && ld.pointerId === e.pointerId && card.logo) {
+            const r = e.currentTarget.getBoundingClientRect();
+            ld.x = Math.max(
+              0,
+              Math.min(
+                CARD_W - card.logo.width,
+                ld.originalX +
+                  ((e.clientX - r.left) * CARD_W) / r.width -
+                  ld.startX,
+              ),
+            );
+            ld.y = Math.max(
+              0,
+              Math.min(
+                CARD_H - card.logo.height,
+                ld.originalY +
+                  ((e.clientY - r.top) * CARD_H) / r.height -
+                  ld.startY,
+              ),
+            );
+            paint();
+            return;
+          }
           if (!drag.current || drag.current.pointerId !== e.pointerId) return;
           updateDrag(e.clientX, e.clientY, e.altKey);
           if (frame.current === null)
@@ -273,6 +374,18 @@ function Preview({
             });
         }}
         onPointerUp={(e) => {
+          const ld = logoDrag.current;
+          if (ld && ld.pointerId === e.pointerId) {
+            logoDrag.current = null;
+            if (
+              ld.cardId === card.id &&
+              (ld.x !== ld.originalX || ld.y !== ld.originalY)
+            )
+              onLogoMove?.(ld.x, ld.y);
+            e.currentTarget.releasePointerCapture(e.pointerId);
+            paint();
+            return;
+          }
           const d = drag.current;
           if (!d || d.pointerId !== e.pointerId) return;
           updateDrag(e.clientX, e.clientY, e.altKey);
@@ -294,7 +407,7 @@ function Preview({
         }}
         onPointerCancel={cancelDrag}
         onLostPointerCapture={() => {
-          if (drag.current) cancelDrag();
+          if (drag.current || logoDrag.current) cancelDrag();
         }}
       />
       {error && <p role="alert">{error}</p>}
@@ -688,6 +801,14 @@ export function CardnewsStudio({
                   snapping={snapping}
                   onSelect={busy ? undefined : setSelection}
                   onMove={applyPositions}
+                  onLogoMove={
+                    busy
+                      ? undefined
+                      : (x, y) => {
+                          if (card.logo)
+                            patchCard({ logo: { ...card.logo, x, y } });
+                        }
+                  }
                 />
               </div>
               <p className={overflow ? styles.warning : styles.hint}>
@@ -828,6 +949,92 @@ export function CardnewsStudio({
                   />
                   안내선과 자동 맞춤
                 </label>
+              </section>
+              <section>
+                <h3>예술숲 로고</h3>
+                <CompanyAssets
+                  onInsert={async ({ src, name, width, height }) => {
+                    const scale = Math.min(280 / width, 220 / height);
+                    patchCard({
+                      logo: {
+                        src,
+                        name,
+                        width: width * scale,
+                        height: height * scale,
+                        x: 80,
+                        y: 1100,
+                      },
+                    });
+                    setStatus(
+                      "현재 카드에 로고를 넣었어요. 아래에서 크기와 위치를 조절하세요.",
+                    );
+                  }}
+                />
+                {card.logo && (
+                  <>
+                    <small>{card.logo.name}</small>
+                    <label>
+                      로고 크기
+                      <input
+                        aria-label="로고 크기"
+                        type="range"
+                        min="60"
+                        max={Math.min(
+                          800,
+                          (900 * card.logo.width) / card.logo.height,
+                        )}
+                        value={card.logo.width}
+                        onChange={(e) => {
+                          const width = +e.target.value,
+                            height =
+                              (width * card.logo!.height) / card.logo!.width;
+                          patchCard({
+                            logo: {
+                              ...card.logo!,
+                              width,
+                              height,
+                              x: Math.min(card.logo!.x, CARD_W - width),
+                              y: Math.min(card.logo!.y, CARD_H - height),
+                            },
+                          });
+                        }}
+                      />
+                    </label>
+                    <label>
+                      로고 좌우 위치
+                      <input
+                        aria-label="로고 좌우 위치"
+                        type="range"
+                        min="0"
+                        max={CARD_W - card.logo.width}
+                        value={card.logo.x}
+                        onChange={(e) =>
+                          patchCard({
+                            logo: { ...card.logo!, x: +e.target.value },
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      로고 상하 위치
+                      <input
+                        aria-label="로고 상하 위치"
+                        type="range"
+                        min="0"
+                        max={CARD_H - card.logo.height}
+                        value={card.logo.y}
+                        onChange={(e) =>
+                          patchCard({
+                            logo: { ...card.logo!, y: +e.target.value },
+                          })
+                        }
+                      />
+                    </label>
+                    <button onClick={() => patchCard({ logo: undefined })}>
+                      로고 제거
+                    </button>
+                  </>
+                )}
               </section>
               <section>
                 <h3>배경</h3>
