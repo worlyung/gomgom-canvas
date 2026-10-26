@@ -87,8 +87,8 @@ export function MaskEditor({
   const [activeIdx, setActiveIdx] = useState(0);
   const drawing = useRef(false);
   const [brushSize, setBrushSize] = useState(20);
-  const [cursor, setCursor] = useState<{x:number;y:number}|null>(null);
-  const lastPoint = useRef<{x:number;y:number}|null>(null);
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+  const lastPoint = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     const el = new window.Image();
@@ -140,7 +140,10 @@ export function MaskEditor({
   // 포인트 반지름: 곰곰님 요청으로 기존 폭/20의 30%로 축소 (1024px 기준 50px → 15px).
   // 기존 값은 "이 크기면 모델이 사물 전체를 인식한다"는 1단계 실측치였으므로,
   // 작은 점이 대상을 덜 집어낼 수 있다 — 안 먹으면 두 번 찍거나 브러시로.
-  const brushR = mode === "point" ? natural.w / 66.7 : (brushSize / 2) * natural.w / screenRect.w;
+  const brushR =
+    mode === "point"
+      ? natural.w / 66.7
+      : ((brushSize / 2) * natural.w) / screenRect.w;
   const multi = mode !== "text"; // 글자수정은 한 덩어리로 다룬다
   const hasDrawing = regions.some((r) => r.strokes.length > 0);
 
@@ -154,14 +157,24 @@ export function MaskEditor({
 
   const dot = (x: number, y: number) => {
     const previous = lastPoint.current;
-    const count = previous ? Math.ceil(Math.hypot(x-previous.x,y-previous.y)/Math.max(1,brushR/2)) : 1;
-    const strokes = Array.from({length:Math.max(1,count)},(_,i)=>({x:previous ? previous.x+(x-previous.x)*(i+1)/Math.max(1,count):x,y:previous ? previous.y+(y-previous.y)*(i+1)/Math.max(1,count):y,r:brushR}));
-    lastPoint.current = {x,y};
+    const count = previous
+      ? Math.ceil(
+          Math.hypot(x - previous.x, y - previous.y) / Math.max(1, brushR / 2),
+        )
+      : 1;
+    const strokes = Array.from({ length: Math.max(1, count) }, (_, i) => ({
+      x: previous
+        ? previous.x + ((x - previous.x) * (i + 1)) / Math.max(1, count)
+        : x,
+      y: previous
+        ? previous.y + ((y - previous.y) * (i + 1)) / Math.max(1, count)
+        : y,
+      r: brushR,
+    }));
+    lastPoint.current = { x, y };
     setRegions((prev) =>
       prev.map((rg, i) =>
-        i === activeIdx
-          ? { ...rg, strokes: [...rg.strokes, ...strokes] }
-          : rg,
+        i === activeIdx ? { ...rg, strokes: [...rg.strokes, ...strokes] } : rg,
       ),
     );
   };
@@ -233,16 +246,34 @@ export function MaskEditor({
           }
         }}
         onPointerMove={(e) => {
-          setCursor({x:e.clientX,y:e.clientY});
+          setCursor({ x: e.clientX, y: e.clientY });
           if (mode !== "point" && drawing.current) {
             const p = toCanvasXY(e);
             dot(p.x, p.y);
           }
         }}
-        onPointerUp={() => {drawing.current = false;lastPoint.current=null;}}
-        onPointerLeave={() => {drawing.current = false;lastPoint.current=null;setCursor(null);}}
+        onPointerUp={() => {
+          drawing.current = false;
+          lastPoint.current = null;
+        }}
+        onPointerLeave={() => {
+          drawing.current = false;
+          lastPoint.current = null;
+          setCursor(null);
+        }}
       />
-      {mode !== "point" && cursor && <div aria-hidden="true" className="fixed pointer-events-none rounded-full border border-white ring-1 ring-black" style={{left:cursor.x-brushSize/2,top:cursor.y-brushSize/2,width:brushSize,height:brushSize}} />}
+      {mode !== "point" && cursor && (
+        <div
+          aria-hidden="true"
+          className="fixed pointer-events-none rounded-full border border-white ring-1 ring-black"
+          style={{
+            left: cursor.x - brushSize / 2,
+            top: cursor.y - brushSize / 2,
+            width: brushSize,
+            height: brushSize,
+          }}
+        />
+      )}
 
       {/* 상단 바 — 안내 + 지우기/취소/적용 */}
       <div
@@ -258,7 +289,22 @@ export function MaskEditor({
                 ? "고칠 부분을 칠하세요 — 여러 곳이면 오른쪽 '영역 추가'"
                 : "고칠 것을 콕 찍으세요 — 여러 곳이면 오른쪽 '영역 추가'"}
         </span>
-        {mode !== "point" && <label className="flex items-center gap-2 text-xs whitespace-nowrap">브러시 크기<input aria-label="브러시 크기" type="range" min={2} max={120} step={1} value={brushSize} onChange={e=>setBrushSize(Number(e.target.value))} className="w-24"/><span className="w-10">{brushSize}px</span></label>}
+        {mode !== "point" && (
+          <label className="flex items-center gap-2 text-xs whitespace-nowrap">
+            브러시 크기
+            <input
+              aria-label="브러시 크기"
+              type="range"
+              min={2}
+              max={120}
+              step={1}
+              value={brushSize}
+              onChange={(e) => setBrushSize(Number(e.target.value))}
+              className="w-24"
+            />
+            <span className="w-10">{brushSize}px</span>
+          </label>
+        )}
         {mode === "text" && (
           <input
             value={newText}
@@ -323,7 +369,9 @@ export function MaskEditor({
               key={rg.label}
               onClick={() => setActiveIdx(i)}
               className={`cursor-pointer rounded-lg border p-2 transition-colors ${
-                i === activeIdx ? "border-blue-500 bg-accent/50" : "bg-background/40"
+                i === activeIdx
+                  ? "border-blue-500 bg-accent/50"
+                  : "bg-background/40"
               }`}
             >
               <div className="mb-1.5 flex items-center gap-2">
@@ -370,9 +418,7 @@ export function MaskEditor({
                 }
                 onClick={(e) => e.stopPropagation()}
                 placeholder={
-                  i === 0
-                    ? "예: 로고를 파란색으로"
-                    : "예: 날짜를 4월 6일로"
+                  i === 0 ? "예: 로고를 파란색으로" : "예: 날짜를 4월 6일로"
                 }
                 rows={2}
                 className="w-full resize-none rounded-md border bg-background px-2 py-1 text-xs outline-none"
@@ -404,8 +450,8 @@ export function MaskEditor({
             + 영역 추가
           </Button>
           <p className="px-0.5 text-[11px] leading-snug text-muted-foreground">
-            영역이 하나면 지시는 아래 프롬프트 창을 씁니다. 둘 이상이면 여기 적은
-            내용이 위치와 함께 한 번에 전달됩니다.
+            영역이 하나면 지시는 아래 프롬프트 창을 씁니다. 둘 이상이면 여기
+            적은 내용이 위치와 함께 한 번에 전달됩니다.
           </p>
         </div>
       )}

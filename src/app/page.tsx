@@ -69,13 +69,23 @@ import { ToolPalette } from "@/components/tool-palette";
 import { BoardPanel, type BoardMeta } from "@/components/board-panel";
 import { loadBoard, saveBoard } from "@/lib/board-sync";
 import { StudioWorkbench } from "@/components/studio-workbench";
-import { emptyExtras, saveStudioExtras, loadStudioExtras, type StudioExtras, type StudioProject } from "@/lib/studio-project";
+import {
+  emptyExtras,
+  saveStudioExtras,
+  loadStudioExtras,
+  type StudioExtras,
+  type StudioProject,
+} from "@/lib/studio-project";
 import { LayerPanel } from "@/components/layer-panel";
 import { ArtboardDialog } from "@/components/artboard-dialog";
 import { CardnewsStudio } from "@/components/cardnews-studio";
 import { MapStudio } from "@/components/map-studio";
 import { cardLayers, CARD_W, CARD_H, type CardDeck } from "@/lib/cardnews";
-import { makeArtboard, fitArtboard as fitFullArtboard, artboardFileName } from "@/lib/artboard";
+import {
+  makeArtboard,
+  fitArtboard as fitFullArtboard,
+  artboardFileName,
+} from "@/lib/artboard";
 import { ensureLocalFont, familyFromValue } from "@/lib/local-fonts";
 import {
   orderLayers,
@@ -88,13 +98,24 @@ import {
   runCampaign,
   type CampaignPlan,
 } from "@/lib/handlers/campaign-handler";
-import { normalizeSize, promptImageSize, sizeForAspect } from "@/lib/image-sizes";
-import { checkExportSize, pngWithDpi, renderSelectedImage, loadOutputImage } from "@/lib/canvas-output";
 import {
-  ProviderSettings,
-  useProviders,
-} from "@/components/provider-settings";
-import { getProvider, GEMINI_MODELS, OPENAI_MODELS, type ProviderId } from "@/lib/providers";
+  normalizeSize,
+  promptImageSize,
+  sizeForAspect,
+} from "@/lib/image-sizes";
+import {
+  checkExportSize,
+  pngWithDpi,
+  renderSelectedImage,
+  loadOutputImage,
+} from "@/lib/canvas-output";
+import { ProviderSettings, useProviders } from "@/components/provider-settings";
+import {
+  getProvider,
+  GEMINI_MODELS,
+  OPENAI_MODELS,
+  type ProviderId,
+} from "@/lib/providers";
 import { CanvasVideo } from "@/components/canvas/CanvasVideo";
 import { VideoControls } from "@/components/canvas/VideoControls";
 import { ImageToVideoDialog } from "@/components/canvas/ImageToVideoDialog";
@@ -191,9 +212,13 @@ function fitArtboard(board: Artboard, width: number, height: number) {
   const left = width >= 768 ? 348 : 0;
   const right = width >= 1100 ? 280 : 0;
   const top = 160;
-  const bottom = width >= 768 ? 60 : height * .48;
-  const frame = fitFullArtboard(board, Math.max(160,width-left-right), Math.max(160,height-top-bottom));
-  return {...frame,x:frame.x+left,y:frame.y+top};
+  const bottom = width >= 768 ? 60 : height * 0.48;
+  const frame = fitFullArtboard(
+    board,
+    Math.max(160, width - left - right),
+    Math.max(160, height - top - bottom),
+  );
+  return { ...frame, x: frame.x + left, y: frame.y + top };
 }
 
 export default function OverlayPage() {
@@ -223,8 +248,11 @@ export default function OverlayPage() {
   const [imageQuality, setImageQuality] = useState("high");
   const [transparentBg, setTransparentBg] = useState(false);
   const [providerId, setProviderId] = useState<ProviderId>("openai");
-  const { list: providerList, editLocked, reload: reloadProviders } =
-    useProviders();
+  const {
+    list: providerList,
+    editLocked,
+    reload: reloadProviders,
+  } = useProviders();
   const provider = getProvider(providerId);
   const [geminiModel, setGeminiModel] = useState(GEMINI_MODELS[0].value);
   // OpenAI 생성 모델 — 마지막 선택을 기억한다 (편집 기능은 서버가 2.0으로 고정)
@@ -245,12 +273,61 @@ export default function OverlayPage() {
   const [customSizeOpen, setCustomSizeOpen] = useState(false);
   const [campaignOpen, setCampaignOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
-  const [workbenchOpen,setWorkbenchOpen]=useState(false);
-  const [videoMode,setVideoMode]=useState(false);
-  const [studioExtras,setStudioExtras]=useState<StudioExtras>(emptyExtras);
-  const [extrasLoaded,setExtrasLoaded]=useState(false);
-  useEffect(()=>{loadStudioExtras().then(data=>{if(data){setStudioExtras(data);setGenerationSettings(s=>({...s,prompt:data.settings.prompt}));setImageSize(data.settings.size);setImageQuality(data.settings.quality);if(["openai","gemini","grok"].includes(data.settings.provider))setProviderId(data.settings.provider as ProviderId);if(data.settings.provider==="gemini")setGeminiModel(data.settings.model);else if(data.settings.model)setOpenaiModel(data.settings.model);}}).catch(()=>toast({title:"행사 자료 복구 실패",variant:"destructive"})).finally(()=>setExtrasLoaded(true));},[]);
-  useEffect(()=>{if(extrasLoaded)saveStudioExtras({...studioExtras,settings:{prompt:generationSettings.prompt,provider:providerId,model:providerId==="gemini"?geminiModel:openaiModel,size:imageSize,quality:imageQuality}}).catch(()=>toast({title:"행사 자료 자동 저장 실패",description:"프로젝트 파일로 내보내 주세요",variant:"destructive"}));},[studioExtras,extrasLoaded,generationSettings.prompt,providerId,geminiModel,openaiModel,imageSize,imageQuality]);
+  const [workbenchOpen, setWorkbenchOpen] = useState(false);
+  const [videoMode, setVideoMode] = useState(false);
+  const [studioExtras, setStudioExtras] = useState<StudioExtras>(emptyExtras);
+  const [extrasLoaded, setExtrasLoaded] = useState(false);
+  useEffect(() => {
+    loadStudioExtras()
+      .then((data) => {
+        if (data) {
+          setStudioExtras(data);
+          setGenerationSettings((s) => ({
+            ...s,
+            prompt: data.settings.prompt,
+          }));
+          setImageSize(data.settings.size);
+          setImageQuality(data.settings.quality);
+          if (["openai", "gemini", "grok"].includes(data.settings.provider))
+            setProviderId(data.settings.provider as ProviderId);
+          if (data.settings.provider === "gemini")
+            setGeminiModel(data.settings.model);
+          else if (data.settings.model) setOpenaiModel(data.settings.model);
+        }
+      })
+      .catch(() =>
+        toast({ title: "행사 자료 복구 실패", variant: "destructive" }),
+      )
+      .finally(() => setExtrasLoaded(true));
+  }, []);
+  useEffect(() => {
+    if (extrasLoaded)
+      saveStudioExtras({
+        ...studioExtras,
+        settings: {
+          prompt: generationSettings.prompt,
+          provider: providerId,
+          model: providerId === "gemini" ? geminiModel : openaiModel,
+          size: imageSize,
+          quality: imageQuality,
+        },
+      }).catch(() =>
+        toast({
+          title: "행사 자료 자동 저장 실패",
+          description: "프로젝트 파일로 내보내 주세요",
+          variant: "destructive",
+        }),
+      );
+  }, [
+    studioExtras,
+    extrasLoaded,
+    generationSettings.prompt,
+    providerId,
+    geminiModel,
+    openaiModel,
+    imageSize,
+    imageQuality,
+  ]);
   const [cardnewsStudioOpen, setCardnewsStudioOpen] = useState(false);
   const [mapStudioOpen, setMapStudioOpen] = useState(false);
   const [cardnewsMounted, setCardnewsMounted] = useState(false);
@@ -999,7 +1076,12 @@ export default function OverlayPage() {
     } catch (error) {
       console.error("Failed to save to storage:", error);
       setSaveError(true);
-      toast({ title: "자동 저장에 실패했어요", description: "이 창을 닫지 말고 보드 저장·열기에서 작업을 저장해 주세요. 기존 이미지는 삭제하지 않았어요.", variant: "destructive" });
+      toast({
+        title: "자동 저장에 실패했어요",
+        description:
+          "이 창을 닫지 말고 보드 저장·열기에서 작업을 저장해 주세요. 기존 이미지는 삭제하지 않았어요.",
+        variant: "destructive",
+      });
       setIsSaving(false);
     }
   }, [images, videos, texts, shapes, notes, viewport]);
@@ -1023,7 +1105,9 @@ export default function OverlayPage() {
         if (element.type === "shape") {
           restoredShapes.push({
             id: element.id,
-              hidden:element.hidden,locked:element.locked,z:element.zIndex,
+            hidden: element.hidden,
+            locked: element.locked,
+            z: element.zIndex,
             kind: (element.kind || "rect") as PlacedShape["kind"],
             x: element.transform.x,
             y: element.transform.y,
@@ -1054,7 +1138,9 @@ export default function OverlayPage() {
         if (element.type === "text") {
           restoredTexts.push({
             id: element.id,
-              hidden:element.hidden,locked:element.locked,z:element.zIndex,
+            hidden: element.hidden,
+            locked: element.locked,
+            z: element.zIndex,
             text: element.text || "",
             x: element.transform.x,
             y: element.transform.y,
@@ -1073,10 +1159,12 @@ export default function OverlayPage() {
           if (imageData) {
             loadedImages.push({
               id: element.id,
-              hidden:element.hidden,locked:element.locked,z:element.zIndex,
+              hidden: element.hidden,
+              locked: element.locked,
+              z: element.zIndex,
               src: imageData.originalDataUrl,
               ...(element.promptHint && { promptHint: element.promptHint }),
-              generation:element.generation,
+              generation: element.generation,
               x: element.transform.x,
               y: element.transform.y,
               width: element.width || 300,
@@ -1095,7 +1183,9 @@ export default function OverlayPage() {
           if (videoData) {
             loadedVideos.push({
               id: element.id,
-              hidden:element.hidden,locked:element.locked,z:element.zIndex,
+              hidden: element.hidden,
+              locked: element.locked,
+              z: element.zIndex,
               src: videoData.originalDataUrl,
               x: element.transform.x,
               y: element.transform.y,
@@ -1218,7 +1308,16 @@ export default function OverlayPage() {
     newHistory.push(newState);
     setHistory(newHistory);
     setHistoryIndex(newHistory.length - 1);
-  }, [images, videos, texts, shapes, notes, selectedIds, history, historyIndex]);
+  }, [
+    images,
+    videos,
+    texts,
+    shapes,
+    notes,
+    selectedIds,
+    history,
+    historyIndex,
+  ]);
 
   // 기록 한 칸을 화면에 되살린다. 옛 기록(글씨·도형 없음)이면 지금 것을 그대로 둔다
   const restoreHistory = useCallback((s: HistoryState) => {
@@ -1508,7 +1607,8 @@ export default function OverlayPage() {
           } catch (err) {
             toast({
               title: "문서 이해 실패",
-              description: err instanceof Error ? err.message : "알 수 없는 오류",
+              description:
+                err instanceof Error ? err.message : "알 수 없는 오류",
               variant: "destructive",
             });
           }
@@ -2019,7 +2119,10 @@ export default function OverlayPage() {
   const enhancePrompt = async () => {
     const raw = generationSettings.prompt.trim();
     if (!raw) {
-      toast({ title: "먼저 뭘 만들지 한 줄 적어주세요", variant: "destructive" });
+      toast({
+        title: "먼저 뭘 만들지 한 줄 적어주세요",
+        variant: "destructive",
+      });
       return;
     }
     setIsEnhancing(true);
@@ -2071,7 +2174,16 @@ export default function OverlayPage() {
         viewport,
         artboard,
         videos,
-        extras: {...studioExtras,settings:{prompt:generationSettings.prompt,provider:providerId,model:providerId==="gemini"?geminiModel:openaiModel,size:imageSize,quality:imageQuality}},
+        extras: {
+          ...studioExtras,
+          settings: {
+            prompt: generationSettings.prompt,
+            provider: providerId,
+            model: providerId === "gemini" ? geminiModel : openaiModel,
+            size: imageSize,
+            quality: imageQuality,
+          },
+        },
         onProgress: (m) => setBoardBusy(m),
       });
       setBoardId(meta.id);
@@ -2092,7 +2204,10 @@ export default function OverlayPage() {
           await doSaveBoard(id, name, true);
           return;
         }
-        toast({ title: "저장하지 않았습니다", description: "먼저 상대 보드를 열어 확인하세요" });
+        toast({
+          title: "저장하지 않았습니다",
+          description: "먼저 상대 보드를 열어 확인하세요",
+        });
       } else {
         toast({
           title: "보드 저장 실패",
@@ -2112,7 +2227,23 @@ export default function OverlayPage() {
       saveToHistory();
       setImages(data.images);
       setVideos(data.videos);
-      if(data.extras){setStudioExtras(data.extras);setGenerationSettings(s=>({...s,prompt:data.extras!.settings.prompt}));setImageSize(data.extras.settings.size);setImageQuality(data.extras.settings.quality);if(["openai","gemini","grok"].includes(data.extras.settings.provider))setProviderId(data.extras.settings.provider as ProviderId);if(data.extras.settings.provider==="gemini")setGeminiModel(data.extras.settings.model);else if(data.extras.settings.model)setOpenaiModel(data.extras.settings.model);}else setStudioExtras(emptyExtras());
+      if (data.extras) {
+        setStudioExtras(data.extras);
+        setGenerationSettings((s) => ({
+          ...s,
+          prompt: data.extras!.settings.prompt,
+        }));
+        setImageSize(data.extras.settings.size);
+        setImageQuality(data.extras.settings.quality);
+        if (
+          ["openai", "gemini", "grok"].includes(data.extras.settings.provider)
+        )
+          setProviderId(data.extras.settings.provider as ProviderId);
+        if (data.extras.settings.provider === "gemini")
+          setGeminiModel(data.extras.settings.model);
+        else if (data.extras.settings.model)
+          setOpenaiModel(data.extras.settings.model);
+      } else setStudioExtras(emptyExtras());
       setTexts(data.texts);
       setShapes(data.shapes);
       setNotes(data.notes);
@@ -2285,7 +2416,9 @@ export default function OverlayPage() {
       x <= img.x + img.width + 20 &&
       y >= img.y - 20 &&
       y <= img.y + img.height + 20;
-    const shapeIds = shapes.filter((sp) => inBounds(sp.x, sp.y)).map((sp) => sp.id);
+    const shapeIds = shapes
+      .filter((sp) => inBounds(sp.x, sp.y))
+      .map((sp) => sp.id);
     setShapes((prev) => prev.filter((sp) => !shapeIds.includes(sp.id)));
     const insideIds = texts
       .filter(
@@ -2359,7 +2492,9 @@ export default function OverlayPage() {
   };
 
   const detectedPromptSize = promptImageSize(generationSettings.prompt);
-  useEffect(() => { if (detectedPromptSize) setImageSize(detectedPromptSize); }, [detectedPromptSize]);
+  useEffect(() => {
+    if (detectedPromptSize) setImageSize(detectedPromptSize);
+  }, [detectedPromptSize]);
 
   const handleRun = async () => {
     const resolvedSize = imageSize;
@@ -2369,14 +2504,20 @@ export default function OverlayPage() {
     await runOpenAIGeneration({
       images,
       selectedIds,
-      prompt: [generationSettings.prompt,
-        exactCopy.trim() && `이미지에 넣을 문구는 다음과 같다. 따옴표 안 내용을 번역하거나 바꾸지 말고 정확하게 표기하고, 읽기 좋은 크기와 대비로 배치하라: ${JSON.stringify(exactCopy.trim())}`,
-        images.some(i => selectedIds.includes(i.id)) && referenceKeep.trim() && `참조 이미지에서 반드시 유지할 특징: ${referenceKeep.trim()}. 요청한 변경 외에는 이 특징을 유지하라.`
-      ].filter(Boolean).join("\n\n"),
+      prompt: [
+        generationSettings.prompt,
+        exactCopy.trim() &&
+          `이미지에 넣을 문구는 다음과 같다. 따옴표 안 내용을 번역하거나 바꾸지 말고 정확하게 표기하고, 읽기 좋은 크기와 대비로 배치하라: ${JSON.stringify(exactCopy.trim())}`,
+        images.some((i) => selectedIds.includes(i.id)) &&
+          referenceKeep.trim() &&
+          `참조 이미지에서 반드시 유지할 특징: ${referenceKeep.trim()}. 요청한 변경 외에는 이 특징을 유지하라.`,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
       n: providerId === "openai" ? variantCount : 1,
       workspaceLeft: canvasSize.width >= 768 ? 348 : 0,
       workspaceRight: canvasSize.width >= 1100 ? 280 : 0,
-      workspaceBottom: canvasSize.width >= 768 ? 60 : canvasSize.height * .48,
+      workspaceBottom: canvasSize.width >= 768 ? 60 : canvasSize.height * 0.48,
       setViewport,
       size: resolvedSize,
       quality: imageQuality,
@@ -2432,15 +2573,33 @@ export default function OverlayPage() {
     // Update both arrays
     setImages((prev) => [...prev, ...newImages]);
     setVideos((prev) => [...prev, ...newVideos]);
-    const copy = <T extends {id: string; x: number; y: number}>(items: T[]) => items.filter(i => selectedIds.includes(i.id)).map(i => ({...i, id: crypto.randomUUID(), x: i.x + 20, y: i.y + 20}));
-    const newTexts = copy(texts), newShapes = copy(shapes), newNotes = copy(notes).map(n => ({...n, targetX:n.targetX+20, targetY:n.targetY+20}));
-    setTexts(prev => [...prev, ...newTexts]); setShapes(prev => [...prev, ...newShapes]); setNotes(prev => [...prev, ...newNotes]);
+    const copy = <T extends { id: string; x: number; y: number }>(items: T[]) =>
+      items
+        .filter((i) => selectedIds.includes(i.id))
+        .map((i) => ({
+          ...i,
+          id: crypto.randomUUID(),
+          x: i.x + 20,
+          y: i.y + 20,
+        }));
+    const newTexts = copy(texts),
+      newShapes = copy(shapes),
+      newNotes = copy(notes).map((n) => ({
+        ...n,
+        targetX: n.targetX + 20,
+        targetY: n.targetY + 20,
+      }));
+    setTexts((prev) => [...prev, ...newTexts]);
+    setShapes((prev) => [...prev, ...newShapes]);
+    setNotes((prev) => [...prev, ...newNotes]);
 
     // Select all duplicated items
     const newIds = [
       ...newImages.map((img) => img.id),
       ...newVideos.map((vid) => vid.id),
-      ...newTexts.map(i => i.id), ...newShapes.map(i => i.id), ...newNotes.map(i => i.id),
+      ...newTexts.map((i) => i.id),
+      ...newShapes.map((i) => i.id),
+      ...newNotes.map((i) => i.id),
     ];
     setSelectedIds(newIds);
   };
@@ -2639,7 +2798,9 @@ export default function OverlayPage() {
       const cur = orderedLayers.find((e) => e.id === id)?.item;
       if (!cur) return;
       saveToHistory();
-      const flip = <T extends { id: string; hidden?: boolean; locked?: boolean }>(
+      const flip = <
+        T extends { id: string; hidden?: boolean; locked?: boolean },
+      >(
         arr: T[],
       ) => arr.map((it) => (it.id === id ? { ...it, [flag]: !it[flag] } : it));
       setImages((prev) => flip(prev));
@@ -2693,7 +2854,8 @@ export default function OverlayPage() {
   // 새 세션은 자유 작업으로 시작한다. 저장한 보드를 명시적으로 열 때만 판을 복원한다.
   useEffect(() => {
     try {
-      if (artboard) localStorage.setItem("gomgom-artboard", JSON.stringify(artboard));
+      if (artboard)
+        localStorage.setItem("gomgom-artboard", JSON.stringify(artboard));
       else localStorage.removeItem("gomgom-artboard");
     } catch {}
   }, [artboard]);
@@ -2720,7 +2882,8 @@ export default function OverlayPage() {
     const stage = stageRef.current;
     if (!artboard || !stage) return;
     setExporting("굽는 중… (큰 판은 수십 초)");
-    const keep = selectedIds, previousViewport = viewport;
+    const keep = selectedIds,
+      previousViewport = viewport;
     const frame = fitArtboard(artboard, canvasSize.width, canvasSize.height);
     setSelectedIds([]);
     setIsBaking(true); // 메모·선택 표시·판 테두리·판 밖 회색을 숨긴다
@@ -2741,8 +2904,12 @@ export default function OverlayPage() {
       const out = document.createElement("canvas");
       out.width = artboard.width;
       out.height = artboard.height;
-      out.getContext("2d")!.drawImage(raw, 0, 0, artboard.width, artboard.height);
-      const blob: Blob | null = await new Promise((res) => out.toBlob(res, "image/png"));
+      out
+        .getContext("2d")!
+        .drawImage(raw, 0, 0, artboard.width, artboard.height);
+      const blob: Blob | null = await new Promise((res) =>
+        out.toBlob(res, "image/png"),
+      );
       if (!blob) throw new Error("PNG 변환 실패");
       const a = document.createElement("a");
       a.href = URL.createObjectURL(await pngWithDpi(blob, artboard.dpi));
@@ -2767,89 +2934,222 @@ export default function OverlayPage() {
     }
   };
 
-  const [turdam, setTurdam] = useState<{token: string; origin: string; name: string; board: Artboard} | null>(null);
+  const [turdam, setTurdam] = useState<{
+    token: string;
+    origin: string;
+    name: string;
+    board: Artboard;
+  } | null>(null);
   const turdamLoaded = useRef(false);
   const [turdamStatus, setTurdamStatus] = useState("");
   const [turdamSending, setTurdamSending] = useState(false);
   const [turdamSource, setTurdamSource] = useState<"image" | "board">("image");
   const [turdamFit, setTurdamFit] = useState<"contain" | "cover">("contain");
   const [turdamPreview, setTurdamPreview] = useState("");
-  const selectedTurdamImage = selectedIds.length === 1 ? images.find(i => i.id === selectedIds[0] && i.src !== generationPlaceholderSrc) : undefined;
+  const selectedTurdamImage =
+    selectedIds.length === 1
+      ? images.find(
+          (i) => i.id === selectedIds[0] && i.src !== generationPlaceholderSrc,
+        )
+      : undefined;
   useEffect(() => {
     if (turdamSending) return;
     let cancelled = false;
     setTurdamPreview("");
     if (turdam && turdamSource === "image" && selectedTurdamImage) {
-      renderSelectedImage(selectedTurdamImage, turdam.board.width, turdam.board.height, turdamFit)
-        .then(src => { if (!cancelled) setTurdamPreview(src); })
-        .catch(() => { if (!cancelled) setTurdamStatus("선택한 이미지를 읽을 수 없어요. 다른 이미지를 선택해 주세요."); });
+      renderSelectedImage(
+        selectedTurdamImage,
+        turdam.board.width,
+        turdam.board.height,
+        turdamFit,
+      )
+        .then((src) => {
+          if (!cancelled) setTurdamPreview(src);
+        })
+        .catch(() => {
+          if (!cancelled)
+            setTurdamStatus(
+              "선택한 이미지를 읽을 수 없어요. 다른 이미지를 선택해 주세요.",
+            );
+        });
     }
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [turdam, turdamSource, turdamFit, selectedTurdamImage, turdamSending]);
   useEffect(() => {
     if (!isStorageLoaded || !window.opener) return;
-    const query = new URLSearchParams(location.search), token = query.get("turdam"), origin = query.get("origin");
-    if (!token || !origin || !/^http:\/\/(localhost|127\.0\.0\.1):(?:8788|18788)$/.test(origin)) return;
+    const query = new URLSearchParams(location.search),
+      token = query.get("turdam"),
+      origin = query.get("origin");
+    if (
+      !token ||
+      !origin ||
+      !/^http:\/\/(localhost|127\.0\.0\.1):(?:8788|18788)$/.test(origin)
+    )
+      return;
     const receive = (event: MessageEvent) => {
-      if (event.source !== window.opener || event.origin !== origin || event.data?.token !== token) return;
+      if (
+        event.source !== window.opener ||
+        event.origin !== origin ||
+        event.data?.token !== token
+      )
+        return;
       if (event.data.type === "turdam-canvas-applied") {
         setTurdamSending(false);
-        setTurdamStatus(event.data.error || event.data.message || "터담에 적용했어요. 무대 스튜디오에서 확인 후 지도에 반영하세요.");
+        setTurdamStatus(
+          event.data.error ||
+            event.data.message ||
+            "터담에 적용했어요. 무대 스튜디오에서 확인 후 지도에 반영하세요.",
+        );
       }
-      if (event.data.type !== "turdam-canvas-init" || turdamLoaded.current) return;
-      const {width, height, image} = event.data;
-      if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0 || width > 40 || height > 40) return;
-      if (typeof image !== "string" || image.length > 6000000 || (image && !/^data:image\/(png|jpeg|webp);base64,/.test(image))) return;
+      if (event.data.type !== "turdam-canvas-init" || turdamLoaded.current)
+        return;
+      const { width, height, image } = event.data;
+      if (
+        !Number.isFinite(width) ||
+        !Number.isFinite(height) ||
+        width <= 0 ||
+        height <= 0 ||
+        width > 40 ||
+        height > 40
+      )
+        return;
+      if (
+        typeof image !== "string" ||
+        image.length > 6000000 ||
+        (image && !/^data:image\/(png|jpeg|webp);base64,/.test(image))
+      )
+        return;
       turdamLoaded.current = true;
       const name = String(event.data.name || "무대 디자인").slice(0, 80);
-      const scale = 1200 / Math.max(width, height), w = Math.max(1, Math.round(width * scale)), h = Math.max(1, Math.round(height * scale));
+      const scale = 1200 / Math.max(width, height),
+        w = Math.max(1, Math.round(width * scale)),
+        h = Math.max(1, Math.round(height * scale));
       // Keep the existing canvas intact; create the new design to its right.
-      const x = Math.max(0, ...images.map(i => i.x + i.width), ...shapes.map(i => i.x + i.width), ...texts.map(i => i.x + 2000)) + 500;
-      const board: Artboard = {x, y: 0, width: w, height: h, widthMm: width * 1000, heightMm: height * 1000, dpi: w / (width * 1000 / 25.4), name};
+      const x =
+        Math.max(
+          0,
+          ...images.map((i) => i.x + i.width),
+          ...shapes.map((i) => i.x + i.width),
+          ...texts.map((i) => i.x + 2000),
+        ) + 500;
+      const board: Artboard = {
+        x,
+        y: 0,
+        width: w,
+        height: h,
+        widthMm: width * 1000,
+        heightMm: height * 1000,
+        dpi: w / ((width * 1000) / 25.4),
+        name,
+      };
       const id = crypto.randomUUID();
-      if (image) setImages(prev => [...prev, {id, src: image, x, y: 0, width: w, height: h, rotation: 0}]);
-      setSelectedIds(image ? [id] : []); setArtboard(null); setViewport(fitArtboard(board, canvasSize.width, canvasSize.height));
-      setGenerationSettings(prev => ({...prev, prompt: `${name} 디자인. 가로 ${width}m × 세로 ${height}m 비율에 맞춰 주세요.`}));
+      if (image)
+        setImages((prev) => [
+          ...prev,
+          { id, src: image, x, y: 0, width: w, height: h, rotation: 0 },
+        ]);
+      setSelectedIds(image ? [id] : []);
+      setArtboard(null);
+      setViewport(fitArtboard(board, canvasSize.width, canvasSize.height));
+      setGenerationSettings((prev) => ({
+        ...prev,
+        prompt: `${name} 디자인. 가로 ${width}m × 세로 ${height}m 비율에 맞춰 주세요.`,
+      }));
       setImageSize(sizeForAspect(w, h));
-      setTurdam({token, origin, name, board}); setTurdamStatus("이미지를 만들거나 선택한 뒤 바로 적용하세요. 흰 작업판에 옮길 필요 없어요.");
+      setTurdam({ token, origin, name, board });
+      setTurdamStatus(
+        "이미지를 만들거나 선택한 뒤 바로 적용하세요. 흰 작업판에 옮길 필요 없어요.",
+      );
     };
     window.addEventListener("message", receive);
-    window.opener.postMessage({type: "turdam-canvas-ready", token}, origin);
+    window.opener.postMessage({ type: "turdam-canvas-ready", token }, origin);
     return () => window.removeEventListener("message", receive);
-  }, [isStorageLoaded, images, shapes, texts, canvasSize.width, canvasSize.height]);
+  }, [
+    isStorageLoaded,
+    images,
+    shapes,
+    texts,
+    canvasSize.width,
+    canvasSize.height,
+  ]);
 
   const applyToTurdam = async () => {
     if (!turdam || !stageRef.current || turdamSending) return;
-    if (turdamSource === "image" && !selectedTurdamImage) {setTurdamStatus("적용할 이미지 한 장을 선택해 주세요."); return;}
-    if (!window.opener || window.opener.closed) {setTurdamStatus("터담 창이 닫혔어요. 터담에서 다시 연결해 주세요."); return;}
-    setTurdamSending(true); setTurdamStatus("디자인을 보내고 있어요…");
-    const keep = selectedIds, previousViewport = viewport;
+    if (turdamSource === "image" && !selectedTurdamImage) {
+      setTurdamStatus("적용할 이미지 한 장을 선택해 주세요.");
+      return;
+    }
+    if (!window.opener || window.opener.closed) {
+      setTurdamStatus("터담 창이 닫혔어요. 터담에서 다시 연결해 주세요.");
+      return;
+    }
+    setTurdamSending(true);
+    setTurdamStatus("디자인을 보내고 있어요…");
+    const keep = selectedIds,
+      previousViewport = viewport;
     try {
       let image: string;
       const b = turdam.board;
       if (turdamSource === "image") {
-        image = await renderSelectedImage(selectedTurdamImage!, b.width, b.height, turdamFit);
+        image = await renderSelectedImage(
+          selectedTurdamImage!,
+          b.width,
+          b.height,
+          turdamFit,
+        );
       } else {
         const frame = fitArtboard(b, canvasSize.width, canvasSize.height);
-        setSelectedIds([]); setIsBaking(true); setViewport(frame);
+        setSelectedIds([]);
+        setIsBaking(true);
+        setViewport(frame);
         await document.fonts.ready;
-        await new Promise(resolve => setTimeout(resolve, 180));
-        image = stageRef.current.toDataURL({x: b.x * frame.scale + frame.x, y: b.y * frame.scale + frame.y, width: b.width * frame.scale, height: b.height * frame.scale, pixelRatio: 1 / frame.scale, mimeType: "image/png"});
+        await new Promise((resolve) => setTimeout(resolve, 180));
+        image = stageRef.current.toDataURL({
+          x: b.x * frame.scale + frame.x,
+          y: b.y * frame.scale + frame.y,
+          width: b.width * frame.scale,
+          height: b.height * frame.scale,
+          pixelRatio: 1 / frame.scale,
+          mimeType: "image/png",
+        });
       }
       if (image.length > 6000000) throw new Error("이미지가 너무 커요");
-      window.opener.postMessage({type: "turdam-canvas-result", token: turdam.token, image}, turdam.origin);
-    } catch {setTurdamSending(false); setTurdamStatus("이미지를 보내지 못했어요. 업로드한 이미지 상태를 확인해 주세요.");}
-    finally {setIsBaking(false); setSelectedIds(keep); if (turdamSource === "board") setViewport(previousViewport);}
+      window.opener.postMessage(
+        { type: "turdam-canvas-result", token: turdam.token, image },
+        turdam.origin,
+      );
+    } catch {
+      setTurdamSending(false);
+      setTurdamStatus(
+        "이미지를 보내지 못했어요. 업로드한 이미지 상태를 확인해 주세요.",
+      );
+    } finally {
+      setIsBaking(false);
+      setSelectedIds(keep);
+      if (turdamSource === "board") setViewport(previousViewport);
+    }
   };
 
   useEffect(() => {
     if (!turdamSending) return;
-    const timer = setTimeout(() => {setTurdamSending(false); setTurdamStatus("터담 응답이 없어요. 원래 무대 스튜디오가 열려 있는지 확인해 주세요.");}, 15000);
+    const timer = setTimeout(() => {
+      setTurdamSending(false);
+      setTurdamStatus(
+        "터담 응답이 없어요. 원래 무대 스튜디오가 열려 있는지 확인해 주세요.",
+      );
+    }, 15000);
     return () => clearTimeout(timer);
   }, [turdamSending]);
 
   // ── 그리기 도우미 — 종류별 JSX를 함수로 빼서 순서대로 한 줄에 그린다 ──
-  const inView = (it: { x: number; y: number; width: number; height: number }) => {
+  const inView = (it: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => {
     // 화면 밖은 안 그린다 (성능). 예전 필터와 같은 계산
     const buffer = 100;
     const left = -viewport.x / viewport.scale - buffer;
@@ -3429,7 +3729,11 @@ export default function OverlayPage() {
       // Select all
       else if ((e.metaKey || e.ctrlKey) && e.key === "a" && !isInputElement) {
         e.preventDefault();
-        setSelectedIds([...images, ...videos, ...texts, ...shapes, ...notes].filter(i => !("hidden" in i && i.hidden)).map(i => i.id));
+        setSelectedIds(
+          [...images, ...videos, ...texts, ...shapes, ...notes]
+            .filter((i) => !("hidden" in i && i.hidden))
+            .map((i) => i.id),
+        );
       }
       // Delete
       else if (
@@ -3564,22 +3868,126 @@ export default function OverlayPage() {
       onDragEnter={(e) => e.preventDefault()}
       onDragLeave={(e) => e.preventDefault()}
     >
-      {turdam && <div role="region" aria-label="터담 디자인 연결" className="studio-turdam">
-        <div className="flex items-start gap-4">
-          <div className="min-w-0 flex-1"><strong className="text-sm">{turdam.name}에 디자인 적용</strong><p className="mt-1 text-xs">이미지는 어디에 놓여 있어도 바로 사용할 수 있어요.</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button size="sm" variant={turdamSource === "image" ? "default" : "outline"} aria-pressed={turdamSource === "image"} onClick={() => {setTurdamSource("image"); setArtboard(null);}} disabled={turdamSending}>선택한 이미지 사용</Button>
-            <Button size="sm" variant={turdamSource === "board" ? "default" : "outline"} aria-pressed={turdamSource === "board"} onClick={() => {setTurdamSource("board"); setArtboard(turdam.board); setViewport(fitArtboard(turdam.board, canvasSize.width, canvasSize.height));}} disabled={turdamSending}>작업판 전체 사용</Button>
+      {turdam && (
+        <div
+          role="region"
+          aria-label="터담 디자인 연결"
+          className="studio-turdam"
+        >
+          <div className="flex items-start gap-4">
+            <div className="min-w-0 flex-1">
+              <strong className="text-sm">{turdam.name}에 디자인 적용</strong>
+              <p className="mt-1 text-xs">
+                이미지는 어디에 놓여 있어도 바로 사용할 수 있어요.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant={turdamSource === "image" ? "default" : "outline"}
+                  aria-pressed={turdamSource === "image"}
+                  onClick={() => {
+                    setTurdamSource("image");
+                    setArtboard(null);
+                  }}
+                  disabled={turdamSending}
+                >
+                  선택한 이미지 사용
+                </Button>
+                <Button
+                  size="sm"
+                  variant={turdamSource === "board" ? "default" : "outline"}
+                  aria-pressed={turdamSource === "board"}
+                  onClick={() => {
+                    setTurdamSource("board");
+                    setArtboard(turdam.board);
+                    setViewport(
+                      fitArtboard(
+                        turdam.board,
+                        canvasSize.width,
+                        canvasSize.height,
+                      ),
+                    );
+                  }}
+                  disabled={turdamSending}
+                >
+                  작업판 전체 사용
+                </Button>
+              </div>
+              {turdamSource === "image" ? (
+                <label className="mt-2 flex items-center gap-2 text-xs">
+                  비율 맞추기
+                  <select
+                    aria-label="터담 이미지 맞춤"
+                    className="rounded-md border bg-white p-1.5"
+                    value={turdamFit}
+                    disabled={turdamSending}
+                    onChange={(e) =>
+                      setTurdamFit(e.target.value as "contain" | "cover")
+                    }
+                  >
+                    <option value="contain">전체 보이기 · 여백 허용</option>
+                    <option value="cover">꽉 채우기 · 가장자리 잘림</option>
+                  </select>
+                </label>
+              ) : (
+                <p className="mt-2 text-xs">
+                  작업판 안의 이미지·글자·도형을 함께 적용해요.
+                </p>
+              )}
+            </div>
+            {turdamSource === "image" && (
+              <div className="flex h-24 w-36 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-white text-center text-xs text-slate-500">
+                {turdamPreview ? (
+                  <img
+                    src={turdamPreview}
+                    alt="터담 적용 미리보기"
+                    className="h-full w-full object-contain"
+                  />
+                ) : (
+                  "이미지 한 장을 선택해 주세요"
+                )}
+              </div>
+            )}
           </div>
-          {turdamSource === "image" ? <label className="mt-2 flex items-center gap-2 text-xs">비율 맞추기<select aria-label="터담 이미지 맞춤" className="rounded-md border bg-white p-1.5" value={turdamFit} disabled={turdamSending} onChange={e => setTurdamFit(e.target.value as "contain" | "cover")}><option value="contain">전체 보이기 · 여백 허용</option><option value="cover">꽉 채우기 · 가장자리 잘림</option></select></label> : <p className="mt-2 text-xs">작업판 안의 이미지·글자·도형을 함께 적용해요.</p>}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-emerald-900/10 pt-3">
+            <p role="status" className="max-w-sm text-xs">
+              {turdamStatus}
+            </p>
+            <div className="flex gap-2">
+              {turdamSource === "board" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setArtboard(turdam.board);
+                    setViewport(
+                      fitArtboard(
+                        turdam.board,
+                        canvasSize.width,
+                        canvasSize.height,
+                      ),
+                    );
+                  }}
+                >
+                  작업 면 보기
+                </Button>
+              )}
+              <Button
+                size="sm"
+                className="bg-[#20382c] text-white hover:bg-[#315743]"
+                disabled={
+                  turdamSending ||
+                  isGenerating ||
+                  (turdamSource === "image" && !turdamPreview)
+                }
+                onClick={applyToTurdam}
+              >
+                {turdamSending ? "적용 중…" : "터담에 적용"}
+              </Button>
+            </div>
           </div>
-          {turdamSource === "image" && <div className="flex h-24 w-36 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-white text-center text-xs text-slate-500">{turdamPreview ? <img src={turdamPreview} alt="터담 적용 미리보기" className="h-full w-full object-contain" /> : "이미지 한 장을 선택해 주세요"}</div>}
         </div>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-emerald-900/10 pt-3"><p role="status" className="max-w-sm text-xs">{turdamStatus}</p><div className="flex gap-2">
-        {turdamSource === "board" && <Button size="sm" variant="outline" onClick={() => {setArtboard(turdam.board); setViewport(fitArtboard(turdam.board, canvasSize.width, canvasSize.height));}}>작업 면 보기</Button>}
-        <Button size="sm" className="bg-[#20382c] text-white hover:bg-[#315743]" disabled={turdamSending || isGenerating || (turdamSource === "image" && !turdamPreview)} onClick={applyToTurdam}>{turdamSending ? "적용 중…" : "터담에 적용"}</Button>
-        </div></div>
-      </div>}
+      )}
       {/* Render streaming components for active generations */}
       {Array.from(activeGenerations.entries()).map(([imageId, generation]) => (
         <StreamingImage
@@ -3784,8 +4192,18 @@ export default function OverlayPage() {
                               [
                                 [-1e6, -1e6, 2e6, 1e6 + artboard.y],
                                 [-1e6, artboard.y + artboard.height, 2e6, 1e6],
-                                [-1e6, artboard.y, 1e6 + artboard.x, artboard.height],
-                                [artboard.x + artboard.width, artboard.y, 1e6, artboard.height],
+                                [
+                                  -1e6,
+                                  artboard.y,
+                                  1e6 + artboard.x,
+                                  artboard.height,
+                                ],
+                                [
+                                  artboard.x + artboard.width,
+                                  artboard.y,
+                                  1e6,
+                                  artboard.height,
+                                ],
                               ] as [number, number, number, number][]
                             ).map(([x, y, w, h], i) => (
                               <Rect
@@ -3944,7 +4362,9 @@ export default function OverlayPage() {
                     </Layer>
                   </Stage>
                 )}
-                {isCanvasReady && revisionLinksVisible && !isBaking && <RevisionLinks images={images} viewport={viewport} />}
+                {isCanvasReady && revisionLinksVisible && !isBaking && (
+                  <RevisionLinks images={images} viewport={viewport} />
+                )}
 
                 {/* 메모 편집 — 메모지 위에 바로 얹는다 (끄는 중엔 숨김) */}
                 {(() => {
@@ -4019,15 +4439,45 @@ export default function OverlayPage() {
             />
           </div>
 
-          <div className="studio-composer" role="region" aria-label="이미지 생성 설정">
+          <div
+            className="studio-composer"
+            role="region"
+            aria-label="이미지 생성 설정"
+          >
             <nav className="studio-nav" aria-label="작업 종류">
-              <button aria-current="page" onClick={() => document.getElementById("studio-prompt")?.focus()}>이미지 만들기</button>
-              <button onClick={() => {setVideoMode(true);setWorkbenchOpen(true);}}>동영상 만들기</button>
+              <button
+                aria-current="page"
+                onClick={() =>
+                  document.getElementById("studio-prompt")?.focus()
+                }
+              >
+                이미지 만들기
+              </button>
+              <button
+                onClick={() => {
+                  setVideoMode(true);
+                  setWorkbenchOpen(true);
+                }}
+              >
+                동영상 만들기
+              </button>
               <button onClick={openFilePicker}>이미지 가져오기</button>
-              <button onClick={() => {setCardnewsMounted(true);setCardnewsStudioOpen(true);}}>카드뉴스 만들기</button>
-              <button onClick={() => setMapStudioOpen(true)}>지도 만들기</button>
+              <button
+                onClick={() => {
+                  setCardnewsMounted(true);
+                  setCardnewsStudioOpen(true);
+                }}
+              >
+                카드뉴스 만들기
+              </button>
+              <button onClick={() => setMapStudioOpen(true)}>
+                지도 만들기
+              </button>
             </nav>
-            <div className="studio-section-title"><span>이미지 만들기</span><small>생각을 한 장의 이미지로</small></div>
+            <div className="studio-section-title">
+              <span>이미지 만들기</span>
+              <small>생각을 한 장의 이미지로</small>
+            </div>
             <div
               className={cn(
                 "studio-composer-body bg-card",
@@ -4091,54 +4541,72 @@ export default function OverlayPage() {
                 </AnimatePresence>
 
                 {/* Action buttons row */}
-                <div className={selectedIds.some(id => texts.some(t => t.id === id) || shapes.some(s => s.id === id)) ? "studio-properties" : ""}>
-                {(() => {
-                  const sp = shapes.find((x) => selectedIds.includes(x.id));
-                  if (sp)
-                    return (
-                      <ShapeToolbar
-                        item={sp}
+                <div
+                  className={
+                    selectedIds.some(
+                      (id) =>
+                        texts.some((t) => t.id === id) ||
+                        shapes.some((s) => s.id === id),
+                    )
+                      ? "studio-properties"
+                      : ""
+                  }
+                >
+                  {(() => {
+                    const sp = shapes.find((x) => selectedIds.includes(x.id));
+                    if (sp)
+                      return (
+                        <ShapeToolbar
+                          item={sp}
+                          onChange={(patch) =>
+                            setShapes((prev) =>
+                              prev.map((x) =>
+                                x.id === sp.id ? { ...x, ...patch } : x,
+                              ),
+                            )
+                          }
+                          onDelete={() => {
+                            saveToHistory();
+                            setShapes((prev) =>
+                              prev.filter((x) => x.id !== sp.id),
+                            );
+                            setSelectedIds([]);
+                          }}
+                        />
+                      );
+                    // 메모는 하단 바가 아니라 메모지 위에서 바로 고친다 (NoteInlineEditor)
+                    return null;
+                  })()}
+
+                  {(() => {
+                    const sel = texts.find((t) => selectedIds.includes(t.id));
+                    return sel ? (
+                      <TextToolbar
+                        item={sel}
                         onChange={(patch) =>
-                          setShapes((prev) =>
-                            prev.map((x) =>
-                              x.id === sp.id ? { ...x, ...patch } : x,
+                          setTexts((prev) =>
+                            prev.map((t) =>
+                              t.id === sel.id ? { ...t, ...patch } : t,
                             ),
                           )
                         }
                         onDelete={() => {
                           saveToHistory();
-                          setShapes((prev) => prev.filter((x) => x.id !== sp.id));
+                          setTexts((prev) =>
+                            prev.filter((t) => t.id !== sel.id),
+                          );
                           setSelectedIds([]);
                         }}
                       />
-                    );
-                  // 메모는 하단 바가 아니라 메모지 위에서 바로 고친다 (NoteInlineEditor)
-                  return null;
-                })()}
-
-                {(() => {
-                  const sel = texts.find((t) => selectedIds.includes(t.id));
-                  return sel ? (
-                    <TextToolbar
-                      item={sel}
-                      onChange={(patch) =>
-                        setTexts((prev) =>
-                          prev.map((t) =>
-                            t.id === sel.id ? { ...t, ...patch } : t,
-                          ),
-                        )
-                      }
-                      onDelete={() => {
-                        saveToHistory();
-                        setTexts((prev) => prev.filter((t) => t.id !== sel.id));
-                        setSelectedIds([]);
-                      }}
-                    />
-                  ) : null;
-                })()}
-
+                    ) : null;
+                  })()}
                 </div>
-                <label htmlFor="studio-prompt" className="text-sm font-semibold">어떤 이미지를 만들까요?</label>
+                <label
+                  htmlFor="studio-prompt"
+                  className="text-sm font-semibold"
+                >
+                  어떤 이미지를 만들까요?
+                </label>
                 <div className="relative">
                   <Textarea
                     id="studio-prompt"
@@ -4214,13 +4682,45 @@ export default function OverlayPage() {
 
                 <details className="studio-prompt-guide">
                   <summary>문구·참조 세부 지시</summary>
-                  <label>이미지에 넣을 정확한 문구<textarea aria-label="이미지에 넣을 정확한 문구" value={exactCopy} onChange={e => setExactCopy(e.target.value)} placeholder="예: 가을밤, 국악과 만나다" /></label>
-                  <label>참조에서 유지할 특징<textarea aria-label="참조에서 유지할 특징" value={referenceKeep} onChange={e => setReferenceKeep(e.target.value)} placeholder="예: 인물의 얼굴, 의상과 로고 색상" /></label>
-                  <p>참조는 캔버스에서 이미지를 선택해 지정해요. 문구와 특징은 생성 지시에 함께 보내며, 결과는 확인해 주세요.</p>
+                  <label>
+                    이미지에 넣을 정확한 문구
+                    <textarea
+                      aria-label="이미지에 넣을 정확한 문구"
+                      value={exactCopy}
+                      onChange={(e) => setExactCopy(e.target.value)}
+                      placeholder="예: 가을밤, 국악과 만나다"
+                    />
+                  </label>
+                  <label>
+                    참조에서 유지할 특징
+                    <textarea
+                      aria-label="참조에서 유지할 특징"
+                      value={referenceKeep}
+                      onChange={(e) => setReferenceKeep(e.target.value)}
+                      placeholder="예: 인물의 얼굴, 의상과 로고 색상"
+                    />
+                  </label>
+                  <p>
+                    참조는 캔버스에서 이미지를 선택해 지정해요. 문구와 특징은
+                    생성 지시에 함께 보내며, 결과는 확인해 주세요.
+                  </p>
                 </details>
-                <div className="px-1 pb-2 text-xs text-muted-foreground" role="status">
+                <div
+                  className="px-1 pb-2 text-xs text-muted-foreground"
+                  role="status"
+                >
                   출력 크기 · {imageSize.replace("x", " × ")}px
-                  {artboard && Math.abs(artboard.width / artboard.height - Number(imageSize.split("x")[0]) / Number(imageSize.split("x")[1])) > .02 && <span className="ml-2 text-amber-700">작업판과 비율이 달라요 · 적용할 때 맞춤 방식을 선택하세요</span>}
+                  {artboard &&
+                    Math.abs(
+                      artboard.width / artboard.height -
+                        Number(imageSize.split("x")[0]) /
+                          Number(imageSize.split("x")[1]),
+                    ) > 0.02 && (
+                      <span className="ml-2 text-amber-700">
+                        작업판과 비율이 달라요 · 적용할 때 맞춤 방식을
+                        선택하세요
+                      </span>
+                    )}
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 px-1 pb-1">
                   <Button
@@ -4318,27 +4818,91 @@ export default function OverlayPage() {
                       </SelectContent>
                     </Select>
                   )}
-                  <fieldset className="flex flex-wrap gap-1 w-full" aria-label="이미지 비율">
+                  <fieldset
+                    className="flex flex-wrap gap-1 w-full"
+                    aria-label="이미지 비율"
+                  >
                     <legend className="text-xs mb-1">비율</legend>
-                    {[["정사각", "1024x1024"], ["가로 16:9", "1536x864"], ["세로 9:16", "864x1536"], ["가로 3:2", "1536x1024"], ["세로 2:3", "1024x1536"], ["현수막 3:1", "2880x960"], ["A4 세로", "1760x2480"], ["A4 가로", "2480x1760"]].map(([label, value]) => {
-                      const [w,h]=imageSize.split("x").map(Number), [pw,ph]=value.split("x").map(Number);
-                      return <button key={value} type="button" className="rounded border px-2 py-1 text-xs aria-pressed:bg-primary aria-pressed:text-primary-foreground" aria-pressed={Math.abs(w/h-pw/ph)<.02} onClick={()=>setImageSize(value)}>{label}</button>;
+                    {[
+                      ["정사각", "1024x1024"],
+                      ["가로 16:9", "1536x864"],
+                      ["세로 9:16", "864x1536"],
+                      ["가로 3:2", "1536x1024"],
+                      ["세로 2:3", "1024x1536"],
+                      ["현수막 3:1", "2880x960"],
+                      ["A4 세로", "1760x2480"],
+                      ["A4 가로", "2480x1760"],
+                    ].map(([label, value]) => {
+                      const [w, h] = imageSize.split("x").map(Number),
+                        [pw, ph] = value.split("x").map(Number);
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          className="rounded border px-2 py-1 text-xs aria-pressed:bg-primary aria-pressed:text-primary-foreground"
+                          aria-pressed={Math.abs(w / h - pw / ph) < 0.02}
+                          onClick={() => setImageSize(value)}
+                        >
+                          {label}
+                        </button>
+                      );
                     })}
                   </fieldset>
                   <details className="w-full">
-                    <summary className="cursor-pointer text-xs py-2">세부 설정 · 해상도</summary>
-                    <p className="text-xs text-muted-foreground mb-2">현재 {imageSize.replace("x"," × ")}px · 비율을 유지하며 크기를 바꿔요.</p>
+                    <summary className="cursor-pointer text-xs py-2">
+                      세부 설정 · 해상도
+                    </summary>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      현재 {imageSize.replace("x", " × ")}px · 비율을 유지하며
+                      크기를 바꿔요.
+                    </p>
                     <div className="flex gap-2">
-                      {[ ["기본", 1_327_104], ["고해상도", 4_000_000] ].map(([label,pixels])=><button key={label} type="button" className="rounded border px-2 py-1 text-xs" onClick={()=>{const [w,h]=imageSize.split("x").map(Number);const scale=Math.sqrt(Number(pixels)/(w*h));const result=normalizeSize(w*scale,h*scale);if("value" in result)setImageSize(result.value);}}>{label}</button>)}
-                      <button type="button" className="rounded border px-2 py-1 text-xs" onClick={()=>setCustomSizeOpen(true)}>직접 입력…</button>
+                      {[
+                        ["기본", 1_327_104],
+                        ["고해상도", 4_000_000],
+                      ].map(([label, pixels]) => (
+                        <button
+                          key={label}
+                          type="button"
+                          className="rounded border px-2 py-1 text-xs"
+                          onClick={() => {
+                            const [w, h] = imageSize.split("x").map(Number);
+                            const scale = Math.sqrt(Number(pixels) / (w * h));
+                            const result = normalizeSize(w * scale, h * scale);
+                            if ("value" in result) setImageSize(result.value);
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        className="rounded border px-2 py-1 text-xs"
+                        onClick={() => setCustomSizeOpen(true)}
+                      >
+                        직접 입력…
+                      </button>
                     </div>
                   </details>
-                  {providerId === "openai" && <label className="studio-variants">시안 수
-                    <select aria-label="시안 수" value={variantCount} onChange={e => setVariantCount(Number(e.target.value))}>
-                      <option value={1}>1장</option><option value={2}>2장 비교</option><option value={4}>4장 비교</option>
-                    </select>
-                    {variantCount > 1 && <small>장수에 따라 비용이 늘어요</small>}
-                  </label>}
+                  {providerId === "openai" && (
+                    <label className="studio-variants">
+                      시안 수
+                      <select
+                        aria-label="시안 수"
+                        value={variantCount}
+                        onChange={(e) =>
+                          setVariantCount(Number(e.target.value))
+                        }
+                      >
+                        <option value={1}>1장</option>
+                        <option value={2}>2장 비교</option>
+                        <option value={4}>4장 비교</option>
+                      </select>
+                      {variantCount > 1 && (
+                        <small>장수에 따라 비용이 늘어요</small>
+                      )}
+                    </label>
+                  )}
                   <Select value={imageQuality} onValueChange={setImageQuality}>
                     <SelectTrigger className="h-7 w-[86px] text-xs">
                       <SelectValue />
@@ -4367,7 +4931,6 @@ export default function OverlayPage() {
                   >
                     {transparentBg ? "☑ 투명 배경" : "☐ 투명 배경"}
                   </Button>
-
                 </div>
 
                 {/* Style dropdown and Run button */}
@@ -4386,7 +4949,9 @@ export default function OverlayPage() {
                             <div className="w-4 h-4 flex items-center justify-center">
                               <Plus className="w-3.5 h-3.5" />
                             </div>
-                            <span className="truncate text-xs">스타일 선택</span>
+                            <span className="truncate text-xs">
+                              스타일 선택
+                            </span>
                           </>
                         );
                       }
@@ -4561,9 +5126,18 @@ export default function OverlayPage() {
             />
           )}
 
-          {isStorageLoaded && <div role="status" className={`fixed bottom-3 right-4 z-30 rounded-lg border bg-white/95 px-3 py-1 text-xs ${saveError ? "text-red-700" : "text-slate-500"}`}>
-            {saveError ? "자동 저장 실패 · 창을 닫기 전 보드에 저장해 주세요" : isSaving ? "저장 중…" : "이 브라우저에 자동 저장됨"}
-          </div>}
+          {isStorageLoaded && (
+            <div
+              role="status"
+              className={`fixed bottom-3 right-4 z-30 rounded-lg border bg-white/95 px-3 py-1 text-xs ${saveError ? "text-red-700" : "text-slate-500"}`}
+            >
+              {saveError
+                ? "자동 저장 실패 · 창을 닫기 전 보드에 저장해 주세요"
+                : isSaving
+                  ? "저장 중…"
+                  : "이 브라우저에 자동 저장됨"}
+            </div>
+          )}
 
           {/* Zoom controls */}
           <ZoomControls
@@ -4574,7 +5148,66 @@ export default function OverlayPage() {
 
           {/* 앱 로고 */}
           <header className="studio-header">
-            <StudioWorkbench videoMode={videoMode} open={workbenchOpen} onClose={()=>setWorkbenchOpen(false)} project={{images,videos,texts,shapes,notes,viewport,artboard,extras:{...studioExtras,settings:{prompt:generationSettings.prompt,provider:providerId,model:providerId==="gemini"?geminiModel:openaiModel,size:imageSize,quality:imageQuality}}}} selectedIds={selectedIds} boardId={boardId} boardName={boardName} onApply={(p:StudioProject,detach?:boolean)=>{if(detach){setBoardId(null);setBoardName("");setBoardUpdatedAt(undefined);setSelectedIds([]);}saveToHistory();setImages(p.images);setVideos(p.videos);setTexts(p.texts);setShapes(p.shapes);setNotes(p.notes);setViewport(p.viewport);setArtboard(p.artboard);setStudioExtras(p.extras);setGenerationSettings(s=>({...s,prompt:p.extras.settings.prompt}));setImageSize(p.extras.settings.size);setImageQuality(p.extras.settings.quality);if(["openai","gemini","grok"].includes(p.extras.settings.provider))setProviderId(p.extras.settings.provider as ProviderId);if(p.extras.settings.provider==="gemini")setGeminiModel(p.extras.settings.model);else if(p.extras.settings.model)setOpenaiModel(p.extras.settings.model);}} />
+            <StudioWorkbench
+              videoMode={videoMode}
+              open={workbenchOpen}
+              onClose={() => setWorkbenchOpen(false)}
+              project={{
+                images,
+                videos,
+                texts,
+                shapes,
+                notes,
+                viewport,
+                artboard,
+                extras: {
+                  ...studioExtras,
+                  settings: {
+                    prompt: generationSettings.prompt,
+                    provider: providerId,
+                    model: providerId === "gemini" ? geminiModel : openaiModel,
+                    size: imageSize,
+                    quality: imageQuality,
+                  },
+                },
+              }}
+              selectedIds={selectedIds}
+              boardId={boardId}
+              boardName={boardName}
+              onApply={(p: StudioProject, detach?: boolean) => {
+                if (detach) {
+                  setBoardId(null);
+                  setBoardName("");
+                  setBoardUpdatedAt(undefined);
+                  setSelectedIds([]);
+                }
+                saveToHistory();
+                setImages(p.images);
+                setVideos(p.videos);
+                setTexts(p.texts);
+                setShapes(p.shapes);
+                setNotes(p.notes);
+                setViewport(p.viewport);
+                setArtboard(p.artboard);
+                setStudioExtras(p.extras);
+                setGenerationSettings((s) => ({
+                  ...s,
+                  prompt: p.extras.settings.prompt,
+                }));
+                setImageSize(p.extras.settings.size);
+                setImageQuality(p.extras.settings.quality);
+                if (
+                  ["openai", "gemini", "grok"].includes(
+                    p.extras.settings.provider,
+                  )
+                )
+                  setProviderId(p.extras.settings.provider as ProviderId);
+                if (p.extras.settings.provider === "gemini")
+                  setGeminiModel(p.extras.settings.model);
+                else if (p.extras.settings.model)
+                  setOpenaiModel(p.extras.settings.model);
+              }}
+            />
             <img
               src="/logo-small.png"
               alt="곰곰 캔버스"
@@ -4590,211 +5223,557 @@ export default function OverlayPage() {
               {boardId ? `📋 ${boardName}` : "📋 보드 저장·열기"}
             </button>
             <div className="studio-header-undo">
-              <button title="실행취소" aria-label="실행취소" onClick={undo} disabled={historyIndex <= 0}><Undo size={17}/></button>
-              <button title="다시실행" aria-label="다시실행" onClick={redo} disabled={historyIndex >= history.length - 1}><Redo size={17}/></button>
+              <button
+                title="실행취소"
+                aria-label="실행취소"
+                onClick={undo}
+                disabled={historyIndex <= 0}
+              >
+                <Undo size={17} />
+              </button>
+              <button
+                title="다시실행"
+                aria-label="다시실행"
+                onClick={redo}
+                disabled={historyIndex >= history.length - 1}
+              >
+                <Redo size={17} />
+              </button>
             </div>
             <div className="flex-1" />
-            <button onClick={()=>{setVideoMode(false);setWorkbenchOpen(true);}}>작업 관리</button>
-            <button onClick={() => {setLayersOpen(v => !v);setHistoryOpen(false);}} aria-pressed={layersOpen}>레이어</button>
-                  {selectedIds.length > 0 && (
-                    <>
-                      <div className="mx-0.5 h-4 w-px bg-border" />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() =>
-                          downloadImagesAsZip(
-                            images.filter((img) => selectedIds.includes(img.id)),
-                          )
-                        }
-                      >
-                        ⬇ ZIP ({selectedIds.length})
-                      </Button>
-                    </>
-                  )}
-                  {selectedIds.length === 1 &&
-                    images.some((i) => i.id === selectedIds[0]) && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            className="h-7 text-xs"
-                          >
-                            ✏️ 이 이미지 수정 ▾
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start">
-                          {(texts.length > 0 || shapes.length > 0) && (
-                            <>
-                              <DropdownMenuItem onClick={bakeTextIntoImage}>
-                                🔥 합치기 — 얹은 글자·도형을 이미지로 굽기
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                            </>
-                          )}
-                          <DropdownMenuItem onClick={() => openMaskEdit("brush")}>
-                            🖌 부분수정 — 고칠 부분 칠하기
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openMaskEdit("point")}>
-                            📍 포인트수정 — 고칠 것 콕 찍기
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openMaskEdit("text")}>
-                            ✏️ 글자수정 — 글자 칠하고 새 문구
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={removeBgForSelected}>
-                            ✂️ 배경 제거 — OpenAI
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={cutoutForSelected}>
-                            무료 배경 제거 — 원본 보존
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => runExpandFor("1536x1024")}
-                          >
-                            ↔ 가로로 전개 (현수막·배너)
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => runExpandFor("1024x1536")}
-                          >
-                            ↕ 세로로 전개 (스토리·배너)
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => runExpandFor("1024x1024")}
-                          >
-                            ⬜ 정사각 전개 (SNS 피드)
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => setCardnewsOpen(true)}>
-                            🗂 카드뉴스 — 표지 스타일로 페이지 생성
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+            <button
+              onClick={() => {
+                setVideoMode(false);
+                setWorkbenchOpen(true);
+              }}
+            >
+              작업 관리
+            </button>
+            <button
+              onClick={() => {
+                setLayersOpen((v) => !v);
+                setHistoryOpen(false);
+              }}
+              aria-pressed={layersOpen}
+            >
+              레이어
+            </button>
+            {selectedIds.length > 0 && (
+              <>
+                <div className="mx-0.5 h-4 w-px bg-border" />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() =>
+                    downloadImagesAsZip(
+                      images.filter((img) => selectedIds.includes(img.id)),
+                    )
+                  }
+                >
+                  ⬇ ZIP ({selectedIds.length})
+                </Button>
+              </>
+            )}
+            {selectedIds.length === 1 &&
+              images.some((i) => i.id === selectedIds[0]) && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="h-7 text-xs"
+                    >
+                      ✏️ 이 이미지 수정 ▾
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    {(texts.length > 0 || shapes.length > 0) && (
+                      <>
+                        <DropdownMenuItem onClick={bakeTextIntoImage}>
+                          🔥 합치기 — 얹은 글자·도형을 이미지로 굽기
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                      </>
                     )}
-            <button onClick={() => {setHistoryOpen(v => !v);setLayersOpen(false);}} aria-pressed={historyOpen}>생성 이력</button>
-            <button onClick={() => setRevisionLinksVisible(v => !v)} aria-pressed={revisionLinksVisible}>수정 이력 {revisionLinksVisible ? "숨기기" : "보기"}</button>
-            <WorkBundles content={{
-              images: images.filter(i => selectedIds.includes(i.id)),
-              texts: texts.filter(i => selectedIds.includes(i.id)),
-              shapes: shapes.filter(i => selectedIds.includes(i.id)),
-              notes: notes.filter(i => selectedIds.includes(i.id)),
-              videos: videos.filter(i => selectedIds.includes(i.id)),
-            }} onInsert={async source => {
-              const topZ = Math.max(0, ...[...images, ...texts, ...shapes, ...videos].map(i => i.z ?? 0));
-              const bundle = copyBundle(source, (canvasSize.width / 2 - viewport.x) / viewport.scale,
-                (canvasSize.height / 2 - viewport.y) / viewport.scale, topZ);
-              for (const item of bundle.images) await canvasStorage.saveImage(item.src, item.id);
-              for (const item of bundle.videos) await canvasStorage.saveVideo(item.src, item.duration, item.id);
-              saveToHistory();
-              setImages(prev => [...prev, ...bundle.images]); setTexts(prev => [...prev, ...bundle.texts]);
-              setShapes(prev => [...prev, ...bundle.shapes]); setNotes(prev => [...prev, ...bundle.notes]);
-              setVideos(prev => [...prev, ...bundle.videos]);
-              setSelectedIds([...bundle.images, ...bundle.texts, ...bundle.shapes, ...bundle.notes, ...bundle.videos].map(i => i.id));
-              toast({title: "작업 묶음을 복제했어요", description: "원본과 별도로 문구와 이미지를 수정할 수 있어요."});
-            }} />
-            <CompanyAssets onInsert={async ({src, width: originalWidth, height: originalHeight, name}) => {
-              const scale = Math.min(400 / originalWidth, 300 / originalHeight, 1);
-              const width = originalWidth * scale, height = originalHeight * scale;
-              const id = `ci-${crypto.randomUUID()}`;
-              await canvasStorage.saveImage(src, id);
-              saveToHistory();
-              const z = Math.max(0, ...images.map(i=>i.z||0), ...shapes.map(i=>i.z||0), ...texts.map(i=>i.z||0), ...videos.map(i=>i.z||0)) + 1;
-              setImages(prev => [...prev, {id, src, width, height, rotation: 0, z, promptHint: name,
-                x: (canvasSize.width / 2 - viewport.x) / viewport.scale - width / 2,
-                y: (canvasSize.height / 2 - viewport.y) / viewport.scale - height / 2}]);
-              setSelectedIds([id]);
-              toast({title: "예술숲 CI를 넣었어요"});
-            }} />
-            <button onClick={() => setArtboardOpen(true)}>작업판·내보내기</button>
-            <button onClick={() => setUsageOpen(v => !v)} aria-expanded={usageOpen}>사용량</button>
+                    <DropdownMenuItem onClick={() => openMaskEdit("brush")}>
+                      🖌 부분수정 — 고칠 부분 칠하기
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => openMaskEdit("point")}>
+                      📍 포인트수정 — 고칠 것 콕 찍기
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => openMaskEdit("text")}>
+                      ✏️ 글자수정 — 글자 칠하고 새 문구
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={removeBgForSelected}>
+                      ✂️ 배경 제거 — OpenAI
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={cutoutForSelected}>
+                      무료 배경 제거 — 원본 보존
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => runExpandFor("1536x1024")}>
+                      ↔ 가로로 전개 (현수막·배너)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => runExpandFor("1024x1536")}>
+                      ↕ 세로로 전개 (스토리·배너)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => runExpandFor("1024x1024")}>
+                      ⬜ 정사각 전개 (SNS 피드)
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => setCardnewsOpen(true)}>
+                      🗂 카드뉴스 — 표지 스타일로 페이지 생성
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            <button
+              onClick={() => {
+                setHistoryOpen((v) => !v);
+                setLayersOpen(false);
+              }}
+              aria-pressed={historyOpen}
+            >
+              생성 이력
+            </button>
+            <button
+              onClick={() => setRevisionLinksVisible((v) => !v)}
+              aria-pressed={revisionLinksVisible}
+            >
+              수정 이력 {revisionLinksVisible ? "숨기기" : "보기"}
+            </button>
+            <WorkBundles
+              content={{
+                images: images.filter((i) => selectedIds.includes(i.id)),
+                texts: texts.filter((i) => selectedIds.includes(i.id)),
+                shapes: shapes.filter((i) => selectedIds.includes(i.id)),
+                notes: notes.filter((i) => selectedIds.includes(i.id)),
+                videos: videos.filter((i) => selectedIds.includes(i.id)),
+              }}
+              onInsert={async (source) => {
+                const topZ = Math.max(
+                  0,
+                  ...[...images, ...texts, ...shapes, ...videos].map(
+                    (i) => i.z ?? 0,
+                  ),
+                );
+                const bundle = copyBundle(
+                  source,
+                  (canvasSize.width / 2 - viewport.x) / viewport.scale,
+                  (canvasSize.height / 2 - viewport.y) / viewport.scale,
+                  topZ,
+                );
+                for (const item of bundle.images)
+                  await canvasStorage.saveImage(item.src, item.id);
+                for (const item of bundle.videos)
+                  await canvasStorage.saveVideo(
+                    item.src,
+                    item.duration,
+                    item.id,
+                  );
+                saveToHistory();
+                setImages((prev) => [...prev, ...bundle.images]);
+                setTexts((prev) => [...prev, ...bundle.texts]);
+                setShapes((prev) => [...prev, ...bundle.shapes]);
+                setNotes((prev) => [...prev, ...bundle.notes]);
+                setVideos((prev) => [...prev, ...bundle.videos]);
+                setSelectedIds(
+                  [
+                    ...bundle.images,
+                    ...bundle.texts,
+                    ...bundle.shapes,
+                    ...bundle.notes,
+                    ...bundle.videos,
+                  ].map((i) => i.id),
+                );
+                toast({
+                  title: "작업 묶음을 복제했어요",
+                  description:
+                    "원본과 별도로 문구와 이미지를 수정할 수 있어요.",
+                });
+              }}
+            />
+            <CompanyAssets
+              onInsert={async ({
+                src,
+                width: originalWidth,
+                height: originalHeight,
+                name,
+              }) => {
+                const scale = Math.min(
+                  400 / originalWidth,
+                  300 / originalHeight,
+                  1,
+                );
+                const width = originalWidth * scale,
+                  height = originalHeight * scale;
+                const id = `ci-${crypto.randomUUID()}`;
+                await canvasStorage.saveImage(src, id);
+                saveToHistory();
+                const z =
+                  Math.max(
+                    0,
+                    ...images.map((i) => i.z || 0),
+                    ...shapes.map((i) => i.z || 0),
+                    ...texts.map((i) => i.z || 0),
+                    ...videos.map((i) => i.z || 0),
+                  ) + 1;
+                setImages((prev) => [
+                  ...prev,
+                  {
+                    id,
+                    src,
+                    width,
+                    height,
+                    rotation: 0,
+                    z,
+                    promptHint: name,
+                    x:
+                      (canvasSize.width / 2 - viewport.x) / viewport.scale -
+                      width / 2,
+                    y:
+                      (canvasSize.height / 2 - viewport.y) / viewport.scale -
+                      height / 2,
+                  },
+                ]);
+                setSelectedIds([id]);
+                toast({ title: "예술숲 CI를 넣었어요" });
+              }}
+            />
+            <button onClick={() => setArtboardOpen(true)}>
+              작업판·내보내기
+            </button>
+            <button
+              onClick={() => setUsageOpen((v) => !v)}
+              aria-expanded={usageOpen}
+            >
+              사용량
+            </button>
             <DropdownMenu>
-              <DropdownMenuTrigger asChild><button aria-label="작업 설정"><SlidersHorizontal size={16}/><span>설정</span></button></DropdownMenuTrigger>
+              <DropdownMenuTrigger asChild>
+                <button aria-label="작업 설정">
+                  <SlidersHorizontal size={16} />
+                  <span>설정</span>
+                </button>
+              </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>{resolvedTheme === "dark" ? "밝은 화면으로" : "어두운 화면으로"}</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setShowMinimap(v => !v)}>{showMinimap ? "미니맵 숨기기" : "미니맵 표시"}</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setIsSettingsDialogOpen(true)}>API·화면 설정</DropdownMenuItem>
-                <DropdownMenuSeparator/>
-                <DropdownMenuItem className="text-destructive" onClick={async () => {
-                  if (!confirm("캔버스를 비울까요? 캔버스 위 이미지와 저장된 상태가 모두 지워집니다. (생성 이력은 남습니다)")) return;
-                  await canvasStorage.clearAll();
-                  setImages([]);setVideos([]);setTexts([]);setShapes([]);setNotes([]);setSelectedIds([]);setHistory([]);setHistoryIndex(-1);setViewport({x:0,y:0,scale:1});
-                  toast({title:"캔버스를 비웠어요",description:"저장된 캔버스 상태도 함께 지웠습니다"});
-                }}>캔버스 초기화</DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() =>
+                    setTheme(resolvedTheme === "dark" ? "light" : "dark")
+                  }
+                >
+                  {resolvedTheme === "dark"
+                    ? "밝은 화면으로"
+                    : "어두운 화면으로"}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowMinimap((v) => !v)}>
+                  {showMinimap ? "미니맵 숨기기" : "미니맵 표시"}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setIsSettingsDialogOpen(true)}>
+                  API·화면 설정
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive"
+                  onClick={async () => {
+                    if (
+                      !confirm(
+                        "캔버스를 비울까요? 캔버스 위 이미지와 저장된 상태가 모두 지워집니다. (생성 이력은 남습니다)",
+                      )
+                    )
+                      return;
+                    await canvasStorage.clearAll();
+                    setImages([]);
+                    setVideos([]);
+                    setTexts([]);
+                    setShapes([]);
+                    setNotes([]);
+                    setSelectedIds([]);
+                    setHistory([]);
+                    setHistoryIndex(-1);
+                    setViewport({ x: 0, y: 0, scale: 1 });
+                    toast({
+                      title: "캔버스를 비웠어요",
+                      description: "저장된 캔버스 상태도 함께 지웠습니다",
+                    });
+                  }}
+                >
+                  캔버스 초기화
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </header>
-          {cardnewsMounted && <CardnewsStudio open={cardnewsStudioOpen} onClose={() => setCardnewsStudioOpen(false)} images={images}
-            onImport={async (deck: CardDeck) => {
-              const right = Math.max(0, ...images.map(i => i.x + i.width), ...shapes.map(s => s.x + s.width), ...texts.map(t => t.x + 1000));
-              const startX = right + 160;
-              const topZ = Math.max(0,...images.map(i=>i.z||0),...shapes.map(i=>i.z||0),...texts.map(i=>i.z||0),...videos.map(i=>i.z||0))+1;
-              const layers: Awaited<ReturnType<typeof cardLayers>>[] = [];
-              for (let i=0;i<deck.cards.length;i++) layers.push(await cardLayers(deck.cards[i],i+1,deck.cards.length,startX+i*(CARD_W+100),0,topZ+i*1000));
-              saveToHistory();
-              const addedImages=layers.flatMap(l=>l.images);
-              for (const im of addedImages) await canvasStorage.saveImage(im.src, im.id);
-              setImages(prev=>[...prev,...addedImages]);
-              setShapes(prev=>[...prev,...layers.flatMap(l=>l.shapes)]);
-              setTexts(prev=>[...prev,...layers.flatMap(l=>l.texts)]);
-              setSelectedIds([]);
-              const scale=Math.min((canvasSize.height-160)/CARD_H,(canvasSize.width-220)/CARD_W,1);
-              setViewport({x:100-startX*scale,y:80,scale:Math.max(.05,scale)});
-            }}/>}
-          <MapStudio open={mapStudioOpen} onClose={() => setMapStudioOpen(false)}
+          {cardnewsMounted && (
+            <CardnewsStudio
+              open={cardnewsStudioOpen}
+              onClose={() => setCardnewsStudioOpen(false)}
+              images={images}
+              onImport={async (deck: CardDeck) => {
+                const right = Math.max(
+                  0,
+                  ...images.map((i) => i.x + i.width),
+                  ...shapes.map((s) => s.x + s.width),
+                  ...texts.map((t) => t.x + 1000),
+                );
+                const startX = right + 160;
+                const topZ =
+                  Math.max(
+                    0,
+                    ...images.map((i) => i.z || 0),
+                    ...shapes.map((i) => i.z || 0),
+                    ...texts.map((i) => i.z || 0),
+                    ...videos.map((i) => i.z || 0),
+                  ) + 1;
+                const layers: Awaited<ReturnType<typeof cardLayers>>[] = [];
+                for (let i = 0; i < deck.cards.length; i++)
+                  layers.push(
+                    await cardLayers(
+                      deck.cards[i],
+                      i + 1,
+                      deck.cards.length,
+                      startX + i * (CARD_W + 100),
+                      0,
+                      topZ + i * 1000,
+                    ),
+                  );
+                saveToHistory();
+                const addedImages = layers.flatMap((l) => l.images);
+                for (const im of addedImages)
+                  await canvasStorage.saveImage(im.src, im.id);
+                setImages((prev) => [...prev, ...addedImages]);
+                setShapes((prev) => [
+                  ...prev,
+                  ...layers.flatMap((l) => l.shapes),
+                ]);
+                setTexts((prev) => [
+                  ...prev,
+                  ...layers.flatMap((l) => l.texts),
+                ]);
+                setSelectedIds([]);
+                const scale = Math.min(
+                  (canvasSize.height - 160) / CARD_H,
+                  (canvasSize.width - 220) / CARD_W,
+                  1,
+                );
+                setViewport({
+                  x: 100 - startX * scale,
+                  y: 80,
+                  scale: Math.max(0.05, scale),
+                });
+              }}
+            />
+          )}
+          <MapStudio
+            open={mapStudioOpen}
+            onClose={() => setMapStudioOpen(false)}
             onImport={async (blob, name) => {
               const src = await new Promise<string>((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = () => resolve(reader.result as string);
-                reader.onerror = () => reject(new Error("지도 이미지를 읽지 못했어요."));
+                reader.onerror = () =>
+                  reject(new Error("지도 이미지를 읽지 못했어요."));
                 reader.readAsDataURL(blob);
               });
-              const dimensions = await new Promise<{width: number; height: number}>((resolve, reject) => {
+              const dimensions = await new Promise<{
+                width: number;
+                height: number;
+              }>((resolve, reject) => {
                 const image = new window.Image();
-                image.onload = () => resolve({width: image.naturalWidth, height: image.naturalHeight});
-                image.onerror = () => reject(new Error("지도 이미지를 열지 못했어요."));
+                image.onload = () =>
+                  resolve({
+                    width: image.naturalWidth,
+                    height: image.naturalHeight,
+                  });
+                image.onerror = () =>
+                  reject(new Error("지도 이미지를 열지 못했어요."));
                 image.src = src;
               });
-              const scale = Math.min(800 / dimensions.width, 650 / dimensions.height, 1);
-              const width = dimensions.width * scale, height = dimensions.height * scale;
+              const scale = Math.min(
+                800 / dimensions.width,
+                650 / dimensions.height,
+                1,
+              );
+              const width = dimensions.width * scale,
+                height = dimensions.height * scale;
               const id = `map-${crypto.randomUUID()}`;
               await canvasStorage.saveImage(src, id);
               saveToHistory();
-              const z = Math.max(0, ...images.map(i=>i.z||0), ...shapes.map(i=>i.z||0), ...texts.map(i=>i.z||0), ...videos.map(i=>i.z||0)) + 1;
-              setImages(prev => [...prev, {id, src, width, height, rotation: 0, z, promptHint: name,
-                x: (canvasSize.width / 2 - viewport.x) / viewport.scale - width / 2,
-                y: (canvasSize.height / 2 - viewport.y) / viewport.scale - height / 2}]);
+              const z =
+                Math.max(
+                  0,
+                  ...images.map((i) => i.z || 0),
+                  ...shapes.map((i) => i.z || 0),
+                  ...texts.map((i) => i.z || 0),
+                  ...videos.map((i) => i.z || 0),
+                ) + 1;
+              setImages((prev) => [
+                ...prev,
+                {
+                  id,
+                  src,
+                  width,
+                  height,
+                  rotation: 0,
+                  z,
+                  promptHint: name,
+                  x:
+                    (canvasSize.width / 2 - viewport.x) / viewport.scale -
+                    width / 2,
+                  y:
+                    (canvasSize.height / 2 - viewport.y) / viewport.scale -
+                    height / 2,
+                },
+              ]);
               setSelectedIds([id]);
-              toast({title: "지도를 캔버스에 넣었어요"});
-            }} />
-          {!turdam && selectedIds.length === 1 && images.some(i => i.id === selectedIds[0] && i.src !== generationPlaceholderSrc) && <div className="studio-properties">
-            <h2>선택한 이미지</h2>
-            <p>고칠 부분과 출력 방식을 선택하세요.</p>
-            <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" size="sm" onClick={() => openMaskEdit("brush")}>부분 수정</Button>
-              <Button variant="outline" size="sm" onClick={() => openMaskEdit("text")}>글자 수정</Button>
-              <Button variant="outline" size="sm" disabled={isGenerating} title="OpenAI로 배경을 제거해요. API 비용이 발생하며 결과는 원본 옆에 추가돼요." onClick={removeBgForSelected}>배경 제거 · OpenAI</Button>
-              <Button variant="outline" size="sm" onClick={() => runExpandFor("1536x864")}>가로로 확장</Button>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => downloadImagesAsZip(images.filter(i => selectedIds.includes(i.id)))}>이미지 다운로드</Button>
-            <Button size="sm" variant="outline" onClick={async () => {
-              const img = images.find(i => i.id === selectedIds[0])!;
-              try {
-                const source = await loadOutputImage(img.src);
-                const width = Math.round(source.naturalWidth * (img.cropWidth ?? 1)), height = Math.round(source.naturalHeight * (img.cropHeight ?? 1));
-                checkExportSize(width, height);
-                const board: Artboard = {x:img.x,y:img.y,width,height,widthMm:width/300*25.4,heightMm:height/300*25.4,dpi:300,name:"선택 이미지"};
-                saveToHistory(); setImages(prev => prev.map(i => i.id === img.id ? {...i,width,height,rotation:0} : i));
-                setArtboard(board); setViewport(fitArtboard(board,canvasSize.width,canvasSize.height));
-              } catch(e) { toast({title:e instanceof Error ? e.message : "판을 만들지 못했어요",variant:"destructive"}); }
-            }}>이미지 크기로 작업판</Button>
-            {artboard && <Button size="sm" variant="outline" onClick={() => {
-              const img = images.find(i => i.id === selectedIds[0])!, scale = Math.min(artboard.width/img.width,artboard.height/img.height);
-              saveToHistory(); setImages(prev => prev.map(i => i.id === img.id ? {...i,width:img.width*scale,height:img.height*scale,x:artboard.x+(artboard.width-img.width*scale)/2,y:artboard.y+(artboard.height-img.height*scale)/2,rotation:0} : i));
-              setViewport(fitArtboard(artboard,canvasSize.width,canvasSize.height));
-            }}>작업판에 맞춤</Button>}
-          </div>}
+              toast({ title: "지도를 캔버스에 넣었어요" });
+            }}
+          />
+          {!turdam &&
+            selectedIds.length === 1 &&
+            images.some(
+              (i) =>
+                i.id === selectedIds[0] && i.src !== generationPlaceholderSrc,
+            ) && (
+              <div className="studio-properties">
+                <h2>선택한 이미지</h2>
+                <p>고칠 부분과 출력 방식을 선택하세요.</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openMaskEdit("brush")}
+                  >
+                    부분 수정
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openMaskEdit("text")}
+                  >
+                    글자 수정
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isGenerating}
+                    title="OpenAI로 배경을 제거해요. API 비용이 발생하며 결과는 원본 옆에 추가돼요."
+                    onClick={removeBgForSelected}
+                  >
+                    배경 제거 · OpenAI
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => runExpandFor("1536x864")}
+                  >
+                    가로로 확장
+                  </Button>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    downloadImagesAsZip(
+                      images.filter((i) => selectedIds.includes(i.id)),
+                    )
+                  }
+                >
+                  이미지 다운로드
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    const img = images.find((i) => i.id === selectedIds[0])!;
+                    try {
+                      const source = await loadOutputImage(img.src);
+                      const width = Math.round(
+                          source.naturalWidth * (img.cropWidth ?? 1),
+                        ),
+                        height = Math.round(
+                          source.naturalHeight * (img.cropHeight ?? 1),
+                        );
+                      checkExportSize(width, height);
+                      const board: Artboard = {
+                        x: img.x,
+                        y: img.y,
+                        width,
+                        height,
+                        widthMm: (width / 300) * 25.4,
+                        heightMm: (height / 300) * 25.4,
+                        dpi: 300,
+                        name: "선택 이미지",
+                      };
+                      saveToHistory();
+                      setImages((prev) =>
+                        prev.map((i) =>
+                          i.id === img.id
+                            ? { ...i, width, height, rotation: 0 }
+                            : i,
+                        ),
+                      );
+                      setArtboard(board);
+                      setViewport(
+                        fitArtboard(board, canvasSize.width, canvasSize.height),
+                      );
+                    } catch (e) {
+                      toast({
+                        title:
+                          e instanceof Error
+                            ? e.message
+                            : "판을 만들지 못했어요",
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                >
+                  이미지 크기로 작업판
+                </Button>
+                {artboard && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const img = images.find((i) => i.id === selectedIds[0])!,
+                        scale = Math.min(
+                          artboard.width / img.width,
+                          artboard.height / img.height,
+                        );
+                      saveToHistory();
+                      setImages((prev) =>
+                        prev.map((i) =>
+                          i.id === img.id
+                            ? {
+                                ...i,
+                                width: img.width * scale,
+                                height: img.height * scale,
+                                x:
+                                  artboard.x +
+                                  (artboard.width - img.width * scale) / 2,
+                                y:
+                                  artboard.y +
+                                  (artboard.height - img.height * scale) / 2,
+                                rotation: 0,
+                              }
+                            : i,
+                        ),
+                      );
+                      setViewport(
+                        fitArtboard(
+                          artboard,
+                          canvasSize.width,
+                          canvasSize.height,
+                        ),
+                      );
+                    }}
+                  >
+                    작업판에 맞춤
+                  </Button>
+                )}
+              </div>
+            )}
           {usageOpen && <UsageBadge />}
           <ToolPalette
             onAddText={addTextLayer}
@@ -4815,15 +5794,42 @@ export default function OverlayPage() {
             shapes.length === 0 &&
             notes.length === 0 &&
             !isGenerating && (
-              <div className="studio-welcome" style={artboard ? {display:"none"} : undefined}>
+              <div
+                className="studio-welcome"
+                style={artboard ? { display: "none" } : undefined}
+              >
                 <div>
                   <span className="studio-eyebrow">GOMGOM CANVAS</span>
-                  <h1>{turdam ? "무대에 어울리는 이미지를 만들어요" : "오늘의 아이디어를 펼쳐보세요"}</h1>
-                  <p>이미지 한 장부터 공연 포스터까지.<br/>작업판 없이 자유롭게 시작하세요.</p>
+                  <h1>
+                    {turdam
+                      ? "무대에 어울리는 이미지를 만들어요"
+                      : "오늘의 아이디어를 펼쳐보세요"}
+                  </h1>
+                  <p>
+                    이미지 한 장부터 공연 포스터까지.
+                    <br />
+                    작업판 없이 자유롭게 시작하세요.
+                  </p>
                   <div className="studio-start-actions">
-                    <button onClick={() => document.getElementById("studio-prompt")?.focus()}><ImageIcon size={24}/><strong>이미지 만들기</strong><small>말로 설명하고 생성하기</small></button>
-                    <button onClick={openFilePicker}><Paperclip size={24}/><strong>파일 가져오기</strong><small>이미지 · 제안서 · PDF</small></button>
-                    <button onClick={() => setBoardOpen(true)}><History size={24}/><strong>저장한 작업 열기</strong><small>이어서 작업하기</small></button>
+                    <button
+                      onClick={() =>
+                        document.getElementById("studio-prompt")?.focus()
+                      }
+                    >
+                      <ImageIcon size={24} />
+                      <strong>이미지 만들기</strong>
+                      <small>말로 설명하고 생성하기</small>
+                    </button>
+                    <button onClick={openFilePicker}>
+                      <Paperclip size={24} />
+                      <strong>파일 가져오기</strong>
+                      <small>이미지 · 제안서 · PDF</small>
+                    </button>
+                    <button onClick={() => setBoardOpen(true)}>
+                      <History size={24} />
+                      <strong>저장한 작업 열기</strong>
+                      <small>이어서 작업하기</small>
+                    </button>
                   </div>
                   <small>파일을 이곳으로 끌어다 놓아도 돼요</small>
                 </div>
@@ -4881,7 +5887,10 @@ export default function OverlayPage() {
             onCreate={createArtboard}
             onRemove={() => {
               setArtboard(null);
-              toast({ title: "포스터 판을 없앴어요", description: "요소들은 그대로 있습니다" });
+              toast({
+                title: "포스터 판을 없앴어요",
+                description: "요소들은 그대로 있습니다",
+              });
             }}
             onFit={fitToArtboard}
             onExport={exportArtboard}
@@ -4941,7 +5950,9 @@ export default function OverlayPage() {
                 }
                 onOpen={openBoard}
                 onDelete={async (b) => {
-                  if (!confirm(`"${b.name}" 보드를 지울까요? 되돌릴 수 없습니다.`))
+                  if (
+                    !confirm(`"${b.name}" 보드를 지울까요? 되돌릴 수 없습니다.`)
+                  )
                     return;
                   await fetch(`/api/boards/${b.id}`, { method: "DELETE" });
                   if (b.id === boardId) {
@@ -4988,7 +5999,9 @@ export default function OverlayPage() {
               {campaignPlan && (
                 <div className="space-y-3">
                   <div className="rounded-xl border p-3">
-                    <p className="text-sm font-medium">{campaignPlan.concept}</p>
+                    <p className="text-sm font-medium">
+                      {campaignPlan.concept}
+                    </p>
                     <div className="mt-2 flex items-center gap-1.5">
                       {(campaignPlan.palette || []).map((c) => (
                         <span
@@ -5068,8 +6081,8 @@ export default function OverlayPage() {
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                16의 배수로 자동 조정됩니다 · 가장 긴 변 3840px 이하 · 전체
-                약 440만 픽셀 이하 (예: 2480×1760)
+                16의 배수로 자동 조정됩니다 · 가장 긴 변 3840px 이하 · 전체 약
+                440만 픽셀 이하 (예: 2480×1760)
               </p>
               <div className="flex justify-end gap-2">
                 <Button

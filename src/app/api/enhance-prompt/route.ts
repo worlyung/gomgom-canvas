@@ -24,12 +24,18 @@ const SYSTEM = `너는 이미지 생성 프롬프트 전문가다. 사용자가 
 export async function POST(req: NextRequest) {
   const key = getOpenAIKey();
   if (!key) {
-    return NextResponse.json({ error: "OPENAI_API_KEY_COMPANY 없음" }, { status: 500 });
+    return NextResponse.json(
+      { error: "OPENAI_API_KEY_COMPANY 없음" },
+      { status: 500 },
+    );
   }
 
   const { prompt, size, styleLabel, hasRefs } = await req.json();
   if (typeof prompt !== "string" || !prompt.trim()) {
-    return NextResponse.json({ error: "프롬프트가 비었습니다" }, { status: 400 });
+    return NextResponse.json(
+      { error: "프롬프트가 비었습니다" },
+      { status: 400 },
+    );
   }
 
   const context = [
@@ -47,7 +53,10 @@ export async function POST(req: NextRequest) {
   for (const model of models) {
     const resp = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         model,
         messages: [
@@ -69,5 +78,8 @@ export async function POST(req: NextRequest) {
     lastErr = `${model}: ${resp.status}`;
     if (resp.status !== 404 && resp.status !== 400) break;
   }
-  return NextResponse.json({ error: `다듬기 실패 — ${lastErr}` }, { status: 502 });
+  return NextResponse.json(
+    { error: `다듬기 실패 — ${lastErr}` },
+    { status: 502 },
+  );
 }

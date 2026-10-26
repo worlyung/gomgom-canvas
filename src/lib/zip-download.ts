@@ -6,7 +6,9 @@ export async function downloadImagesAsZip(
 ) {
   const files: Record<string, Uint8Array> = {};
   for (let i = 0; i < images.length; i++) {
-    const buf = new Uint8Array(await (await fetch(images[i].src)).arrayBuffer());
+    const buf = new Uint8Array(
+      await (await fetch(images[i].src)).arrayBuffer(),
+    );
     const hint = images[i].promptHint || "이미지";
     files[`${String(i + 1).padStart(2, "0")}_${hint}.png`] = buf;
   }

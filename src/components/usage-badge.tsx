@@ -39,7 +39,12 @@ export function UsageBadge() {
         {" "}
         / 누적 {usage.total.calls}회 · {krw(usage.total.cost)} (참고 추정)
       </span>
-      {!!usage.total.unpriced && <span className="block text-amber-700">비용 미집계 {usage.total.unpriced}회 별도 · 실제 청구액은 서비스에서 확인</span>}
+      {!!usage.total.unpriced && (
+        <span className="block text-amber-700">
+          비용 미집계 {usage.total.unpriced}회 별도 · 실제 청구액은 서비스에서
+          확인
+        </span>
+      )}
     </div>
   );
 }

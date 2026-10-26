@@ -37,12 +37,16 @@ async function extractText(file: File): Promise<string> {
 export async function POST(req: NextRequest) {
   const key = getOpenAIKey();
   if (!key) {
-    return NextResponse.json({ error: "OPENAI_API_KEY_COMPANY 없음 (.env 확인)" }, { status: 500 });
+    return NextResponse.json(
+      { error: "OPENAI_API_KEY_COMPANY 없음 (.env 확인)" },
+      { status: 500 },
+    );
   }
 
   const form = await req.formData();
   const file = form.get("file") as File | null;
-  if (!file) return NextResponse.json({ error: "파일이 없습니다" }, { status: 400 });
+  if (!file)
+    return NextResponse.json({ error: "파일이 없습니다" }, { status: 400 });
 
   let text: string;
   try {
@@ -54,7 +58,10 @@ export async function POST(req: NextRequest) {
     );
   }
   if (text.length < 30) {
-    return NextResponse.json({ error: "문서에서 텍스트를 거의 못 읽었습니다 (스캔 PDF는 미지원)" }, { status: 400 });
+    return NextResponse.json(
+      { error: "문서에서 텍스트를 거의 못 읽었습니다 (스캔 PDF는 미지원)" },
+      { status: 400 },
+    );
   }
   const clipped = text.slice(0, 15000); // ponytail: 15k자 컷 — 초장문 제안서는 앞부분(개요·과업)이 핵심
 
@@ -63,12 +70,18 @@ export async function POST(req: NextRequest) {
   for (const model of models) {
     const resp = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         model,
         messages: [
           { role: "system", content: SYSTEM },
-          { role: "user", content: `문서 파일명: ${file.name}\n\n--- 문서 내용 ---\n${clipped}` },
+          {
+            role: "user",
+            content: `문서 파일명: ${file.name}\n\n--- 문서 내용 ---\n${clipped}`,
+          },
         ],
       }),
     });
@@ -76,12 +89,16 @@ export async function POST(req: NextRequest) {
       workingModel = model;
       const j = await resp.json();
       const prompt = j.choices?.[0]?.message?.content?.trim();
-      if (!prompt) return NextResponse.json({ error: "빈 응답" }, { status: 502 });
+      if (!prompt)
+        return NextResponse.json({ error: "빈 응답" }, { status: 502 });
       return NextResponse.json({ prompt, model });
     }
     lastErr = `${model}: ${resp.status} ${(await resp.text()).slice(0, 150)}`;
     if (resp.status !== 404 && resp.status !== 400) break; // 모델 없음 계열만 다음 후보 시도
   }
   console.error("understand-doc 실패:", lastErr);
-  return NextResponse.json({ error: `텍스트 모델 호출 실패 — ${lastErr}` }, { status: 502 });
+  return NextResponse.json(
+    { error: `텍스트 모델 호출 실패 — ${lastErr}` },
+    { status: 502 },
+  );
 }

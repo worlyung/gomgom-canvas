@@ -38,13 +38,15 @@ export const styleModels: StyleModel[] = [
     id: "watercolor",
     name: "수채화",
     imageSrc: "/images/styles/kr-watercolor.png",
-    prompt: "부드러운 수채화 일러스트 스타일. 따뜻한 색조, 종이 질감, 은은한 번짐",
+    prompt:
+      "부드러운 수채화 일러스트 스타일. 따뜻한 색조, 종이 질감, 은은한 번짐",
   },
   {
     id: "flat",
     name: "플랫 일러스트",
     imageSrc: "/images/styles/kr-flat.png",
-    prompt: "모던 플랫 벡터 일러스트 스타일. 단순한 도형, 파스텔 팔레트, 깔끔한 외곽선 없음",
+    prompt:
+      "모던 플랫 벡터 일러스트 스타일. 단순한 도형, 파스텔 팔레트, 깔끔한 외곽선 없음",
   },
   {
     id: "photo",
@@ -56,13 +58,15 @@ export const styleModels: StyleModel[] = [
     id: "iso3d",
     name: "3D 아이소",
     imageSrc: "/images/styles/kr-iso3d.png",
-    prompt: "귀여운 3D 아이소메트릭 렌더 스타일. 부드러운 조명, 파스텔 색, 매끈한 질감",
+    prompt:
+      "귀여운 3D 아이소메트릭 렌더 스타일. 부드러운 조명, 파스텔 색, 매끈한 질감",
   },
   {
     id: "logo",
     name: "로고·심볼",
     imageSrc: "/images/styles/kr-logo.png",
-    prompt: "미니멀 로고 심볼 스타일. 흰 배경, 단순한 기하 도형, 벡터 느낌, 2~3색 이내",
+    prompt:
+      "미니멀 로고 심볼 스타일. 흰 배경, 단순한 기하 도형, 벡터 느낌, 2~3색 이내",
   },
   {
     // s1dashu/ip-as-logo-skill(MIT)의 규칙을 프리셋으로 흡수
@@ -77,18 +81,21 @@ export const styleModels: StyleModel[] = [
     id: "storybook",
     name: "동화 삽화",
     imageSrc: "/images/styles/kr-storybook.png",
-    prompt: "따뜻한 동화책 삽화 스타일. 크레용과 색연필 질감, 다정한 분위기, 어린이 친화적",
+    prompt:
+      "따뜻한 동화책 삽화 스타일. 크레용과 색연필 질감, 다정한 분위기, 어린이 친화적",
   },
   {
     id: "korean",
     name: "한국 전통",
     imageSrc: "/images/styles/kr-korean.png",
-    prompt: "한국 전통 미술 감성. 한지 질감, 수묵 담채, 오방색 포인트, 절제된 여백",
+    prompt:
+      "한국 전통 미술 감성. 한지 질감, 수묵 담채, 오방색 포인트, 절제된 여백",
   },
   {
     id: "cinematic",
     name: "시네마틱",
     imageSrc: "/images/styles/kr-cinematic.png",
-    prompt: "시네마틱 영화 스틸컷 스타일. 극적인 조명, 넓은 화면 구도, 깊이 있는 색보정",
+    prompt:
+      "시네마틱 영화 스틸컷 스타일. 극적인 조명, 넓은 화면 구도, 깊이 있는 색보정",
   },
 ];

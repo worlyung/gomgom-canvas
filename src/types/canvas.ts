@@ -1,5 +1,13 @@
 export interface PlacedImage {
-  generation?: {prompt:string;provider:string;model:string;size:string;quality:string;referenceIds:string[];createdAt:string};
+  generation?: {
+    prompt: string;
+    provider: string;
+    model: string;
+    size: string;
+    quality: string;
+    referenceIds: string[];
+    createdAt: string;
+  };
   id: string;
   src: string;
   x: number;

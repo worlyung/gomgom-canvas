@@ -86,7 +86,9 @@ export function CanvasShape({
 
   return (
     <>
-      {item.kind === "rect" && <Rect {...common} width={w} height={h} cornerRadius={4} />}
+      {item.kind === "rect" && (
+        <Rect {...common} width={w} height={h} cornerRadius={4} />
+      )}
       {item.kind === "ellipse" && (
         <Ellipse {...common} radiusX={w / 2} radiusY={h / 2} />
       )}
@@ -102,7 +104,12 @@ export function CanvasShape({
         />
       )}
       {item.kind === "arrow" && (
-        <Arrow {...common} points={[0, 0, w, h]} pointerLength={12} pointerWidth={12} />
+        <Arrow
+          {...common}
+          points={[0, 0, w, h]}
+          pointerLength={12}
+          pointerWidth={12}
+        />
       )}
       {item.kind === "line" && <Line {...common} points={[0, 0, w, h]} />}
       {isSelected && !item.locked && (

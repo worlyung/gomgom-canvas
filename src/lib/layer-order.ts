@@ -62,7 +62,8 @@ export function orderLayers(
     arr.forEach((item, idx) => {
       let z: number;
       if (typeof item.z === "number") z = item.z;
-      else if (!anyZ) z = LEGACY_BASE[kind] + idx; // 옛 보드: 예전 순서 그대로
+      else if (!anyZ)
+        z = LEGACY_BASE[kind] + idx; // 옛 보드: 예전 순서 그대로
       else z = maxZ + 1 + idx + NEW_OFFSET[kind]; // 새로 생긴 것은 맨 위
       out.push({ kind, id: item.id, z, item });
     });
@@ -79,10 +80,16 @@ export function moveSelected(
   const sel = new Set(selectedIds);
   const list = [...entries];
   if (mode === "front") {
-    return [...list.filter((e) => !sel.has(e.id)), ...list.filter((e) => sel.has(e.id))];
+    return [
+      ...list.filter((e) => !sel.has(e.id)),
+      ...list.filter((e) => sel.has(e.id)),
+    ];
   }
   if (mode === "back") {
-    return [...list.filter((e) => sel.has(e.id)), ...list.filter((e) => !sel.has(e.id))];
+    return [
+      ...list.filter((e) => sel.has(e.id)),
+      ...list.filter((e) => !sel.has(e.id)),
+    ];
   }
   if (mode === "forward") {
     for (let i = list.length - 2; i >= 0; i--) {

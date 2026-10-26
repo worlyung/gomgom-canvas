@@ -50,13 +50,21 @@ function readNameTable(buf: Buffer, dirOffset: number): Face | null {
       .toString("utf16le")
       .trim();
     if (!s) continue;
-    const key = nameId === 16 ? "fam16" : nameId === 17 ? "sub17" : nameId === 1 ? "fam" : "sub";
+    const key =
+      nameId === 16
+        ? "fam16"
+        : nameId === 17
+          ? "sub17"
+          : nameId === 1
+            ? "fam"
+            : "sub";
     const slot = (pick[key] ||= {});
     if (lang === 0x0412) slot.ko = s;
     else if (lang === 0x0409) slot.en = s;
     else slot.any ||= s;
   }
-  const get = (k: string) => pick[k] && (pick[k].ko || pick[k].en || pick[k].any);
+  const get = (k: string) =>
+    pick[k] && (pick[k].ko || pick[k].en || pick[k].any);
   const family = get("fam16") || get("fam");
   const sub = get("sub17") || get("sub") || "Regular";
   return family ? { family, sub } : null;
@@ -76,7 +84,8 @@ function readFaces(file: string): Face[] {
   return f ? [f] : [];
 }
 
-let cache: { at: number; fonts: { family: string; file: string }[] } | null = null;
+let cache: { at: number; fonts: { family: string; file: string }[] } | null =
+  null;
 
 export async function GET() {
   if (cache && Date.now() - cache.at < 60_000) {
@@ -97,7 +106,10 @@ export async function GET() {
           const cur = byFamily.get(face.family);
           const isRegular = /^(regular|normal|book|보통|일반)$/i.test(face.sub);
           // 같은 글꼴의 여러 굵기 중 Regular를 대표로
-          if (!cur || (isRegular && !/^(regular|normal|book|보통|일반)$/i.test(cur.sub))) {
+          if (
+            !cur ||
+            (isRegular && !/^(regular|normal|book|보통|일반)$/i.test(cur.sub))
+          ) {
             byFamily.set(face.family, { file: `${dir}|${n}`, sub: face.sub });
           }
         }

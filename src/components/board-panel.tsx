@@ -41,7 +41,7 @@ export function BoardPanel({
 }: Props) {
   const [boards, setBoards] = useState<BoardMeta[]>([]);
   const [newName, setNewName] = useState("");
-  const [query,setQuery]=useState("");
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     fetch("/api/boards")
@@ -110,48 +110,63 @@ export function BoardPanel({
         <p className="mb-1.5 text-xs text-muted-foreground">
           저장된 보드 {boards.length}개
         </p>
-        <Input aria-label="저장한 보드 검색" placeholder="작업 이름·저장한 사람 검색" value={query} onChange={e=>setQuery(e.target.value)} />
+        <Input
+          aria-label="저장한 보드 검색"
+          placeholder="작업 이름·저장한 사람 검색"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
         <div className="max-h-64 space-y-1.5 overflow-y-auto">
           {boards.length === 0 && (
             <p className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
               아직 저장된 보드가 없어요
             </p>
           )}
-          {boards.filter(b=>`${b.name} ${b.updatedBy}`.includes(query)).map((b) => (
-            <div
-              key={b.id}
-              className={`flex items-center gap-2 rounded-lg border p-2 ${
-                b.id === currentId ? "ring-1 ring-blue-500" : ""
-              }`}
-            >
-              {b.imageCount>0&&<img src={`/api/boards/${b.id}/thumbnail?v=${encodeURIComponent(b.updatedAt)}`} alt="작업 미리보기" loading="lazy" className="w-14 h-14 rounded object-contain border"/>}
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{b.name}</p>
-                <p className="text-[11px] text-muted-foreground">
-                  {b.updatedBy} · {new Date(b.updatedAt).toLocaleString("ko-KR")}{" "}
-                  · 이미지 {b.imageCount}
-                </p>
+          {boards
+            .filter((b) => `${b.name} ${b.updatedBy}`.includes(query))
+            .map((b) => (
+              <div
+                key={b.id}
+                className={`flex items-center gap-2 rounded-lg border p-2 ${
+                  b.id === currentId ? "ring-1 ring-blue-500" : ""
+                }`}
+              >
+                {b.imageCount > 0 && (
+                  <img
+                    src={`/api/boards/${b.id}/thumbnail?v=${encodeURIComponent(b.updatedAt)}`}
+                    alt="작업 미리보기"
+                    loading="lazy"
+                    className="w-14 h-14 rounded object-contain border"
+                  />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{b.name}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {b.updatedBy} ·{" "}
+                    {new Date(b.updatedAt).toLocaleString("ko-KR")} · 이미지{" "}
+                    {b.imageCount}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="h-7 shrink-0 text-xs"
+                  disabled={!!busy}
+                  onClick={() => onOpen(b)}
+                >
+                  열기
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 shrink-0 text-xs text-destructive"
+                  disabled={!!busy}
+                  onClick={() => onDelete(b)}
+                >
+                  삭제
+                </Button>
               </div>
-              <Button
-                size="sm"
-                variant="secondary"
-                className="h-7 shrink-0 text-xs"
-                disabled={!!busy}
-                onClick={() => onOpen(b)}
-              >
-                열기
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 shrink-0 text-xs text-destructive"
-                disabled={!!busy}
-                onClick={() => onDelete(b)}
-              >
-                삭제
-              </Button>
-            </div>
-          ))}
+            ))}
         </div>
       </div>
 

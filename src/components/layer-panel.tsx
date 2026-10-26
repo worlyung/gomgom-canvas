@@ -41,7 +41,8 @@ function labelOf(e: LayerEntry): string {
     const t = (e.item as PlacedText).text.replace(/\s+/g, " ").trim();
     return t.slice(0, 16) || "빈 글씨";
   }
-  if (e.kind === "shape") return SHAPE_KO[(e.item as PlacedShape).kind] || "도형";
+  if (e.kind === "shape")
+    return SHAPE_KO[(e.item as PlacedShape).kind] || "도형";
   if (e.kind === "video") return "영상";
   return ((e.item as PlacedImage).promptHint || "이미지").slice(0, 16);
 }
@@ -91,7 +92,8 @@ export function LayerPanel({
                 : e.kind === "video"
                   ? Film
                   : ImageIcon;
-          const isDropTarget = overIdx === i && dragId !== null && dragId !== e.id;
+          const isDropTarget =
+            overIdx === i && dragId !== null && dragId !== e.id;
           return (
             <div
               key={e.id}

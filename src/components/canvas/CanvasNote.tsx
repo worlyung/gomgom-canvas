@@ -29,7 +29,10 @@ export const NOTE_WIDTH_WIDE = 500;
 export function noteHeight(text: string, width: number): number {
   const lines = Math.max(1, text.split("\n").length);
   // 글자 하나가 대략 폰트 크기의 0.62배 폭 (한글 기준으로 넉넉히)
-  const perLine = Math.max(6, Math.floor((width - NOTE_PAD * 2) / (NOTE_FONT * 0.62)));
+  const perLine = Math.max(
+    6,
+    Math.floor((width - NOTE_PAD * 2) / (NOTE_FONT * 0.62)),
+  );
   const est = Math.ceil(text.length / perLine);
   const rows = Math.max(2, Math.max(lines, est));
   return NOTE_PAD * 2 + rows * Math.round(NOTE_FONT * NOTE_LINE_HEIGHT) + 4;
@@ -55,17 +58,9 @@ export function CanvasNote({
   const dx = item.targetX - cx;
   const dy = item.targetY - cy;
   const startX =
-    Math.abs(dx) > Math.abs(dy)
-      ? dx > 0
-        ? item.x + item.width
-        : item.x
-      : cx;
+    Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? item.x + item.width : item.x) : cx;
   const startY =
-    Math.abs(dx) > Math.abs(dy)
-      ? cy
-      : dy > 0
-        ? item.y + height
-        : item.y;
+    Math.abs(dx) > Math.abs(dy) ? cy : dy > 0 ? item.y + height : item.y;
 
   const lineColor = item.done ? "#a1a1aa" : "#f59e0b";
 

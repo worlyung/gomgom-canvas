@@ -1,6 +1,10 @@
 // 제공자별 실제 호출 — 결과는 모두 PNG dataURL 배열로 통일해서 돌려준다.
 import "server-only";
-import { getProvider, OPENAI_EDIT_MODEL, type ProviderId } from "@/lib/providers";
+import {
+  getProvider,
+  OPENAI_EDIT_MODEL,
+  type ProviderId,
+} from "@/lib/providers";
 import { getKey } from "@/lib/server-keys";
 import sharp from "sharp";
 
@@ -66,7 +70,10 @@ async function runOpenAI(key: string, a: GenArgs): Promise<GenResult> {
       }),
     });
   }
-  if (!resp.ok) throw new Error(`OpenAI ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
+  if (!resp.ok)
+    throw new Error(
+      `OpenAI ${resp.status}: ${(await resp.text()).slice(0, 300)}`,
+    );
   const j = await resp.json();
   return {
     images: (j.data || [])
@@ -117,7 +124,10 @@ async function runGemini(key: string, a: GenArgs): Promise<GenResult> {
       }),
     },
   );
-  if (!resp.ok) throw new Error(`Gemini ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
+  if (!resp.ok)
+    throw new Error(
+      `Gemini ${resp.status}: ${(await resp.text()).slice(0, 300)}`,
+    );
   const j = await resp.json();
   const images: string[] = [];
   for (const cand of j.candidates || []) {
@@ -127,7 +137,8 @@ async function runGemini(key: string, a: GenArgs): Promise<GenResult> {
     }
   }
   if (!images.length) {
-    const reason = j.candidates?.[0]?.finishReason || "이미지가 오지 않았습니다";
+    const reason =
+      j.candidates?.[0]?.finishReason || "이미지가 오지 않았습니다";
     throw new Error(`Gemini: ${reason}`);
   }
   return { images, usage: j.usageMetadata, model };
@@ -173,7 +184,10 @@ async function runGrok(key: string, a: GenArgs): Promise<GenResult> {
       }),
     });
   }
-  if (!resp.ok) throw new Error(`Grok ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
+  if (!resp.ok)
+    throw new Error(
+      `Grok ${resp.status}: ${(await resp.text()).slice(0, 300)}`,
+    );
   const j = await resp.json();
   return {
     images: (j.data || [])
@@ -204,12 +218,18 @@ export async function generateWith(
     throw new Error(`${provider.label}는 참조 생성을 지원하지 않습니다`);
   }
 
-  const result = await (providerId === "gemini" ? runGemini(key, args) : providerId === "grok" ? runGrok(key, args) : runOpenAI(key, args));
+  const result = await (providerId === "gemini"
+    ? runGemini(key, args)
+    : providerId === "grok"
+      ? runGrok(key, args)
+      : runOpenAI(key, args));
   // Providers may return JPEG bytes even when requesting/defaulting to PNG.
-  result.images = await Promise.all(result.images.map(async image => {
-    const bytes = Buffer.from(image.split(",", 2)[1], "base64");
-    const png = await sharp(bytes).png().toBuffer();
-    return `data:image/png;base64,${png.toString("base64")}`;
-  }));
+  result.images = await Promise.all(
+    result.images.map(async (image) => {
+      const bytes = Buffer.from(image.split(",", 2)[1], "base64");
+      const png = await sharp(bytes).png().toBuffer();
+      return `data:image/png;base64,${png.toString("base64")}`;
+    }),
+  );
   return result;
 }

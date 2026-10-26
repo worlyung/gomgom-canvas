@@ -17,10 +17,31 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { ShapeKind } from "@/types/canvas";
-import { Upload, Type, Shapes, StickyNote, Paintbrush, Scissors, Expand, Images } from "lucide-react";
+import {
+  Upload,
+  Type,
+  Shapes,
+  StickyNote,
+  Paintbrush,
+  Scissors,
+  Expand,
+  Images,
+} from "lucide-react";
 
-function ToolIcon({glyph}: {glyph:string}) {
-  const Icon = ({"📎":Upload,"T":Type,"◇":Shapes,"📝":StickyNote,"🖌":Paintbrush,"✂️":Scissors,"⤢":Expand,"🗂":Images} as Record<string,typeof Upload>)[glyph] || Images;
+function ToolIcon({ glyph }: { glyph: string }) {
+  const Icon =
+    (
+      {
+        "📎": Upload,
+        T: Type,
+        "◇": Shapes,
+        "📝": StickyNote,
+        "🖌": Paintbrush,
+        "✂️": Scissors,
+        "⤢": Expand,
+        "🗂": Images,
+      } as Record<string, typeof Upload>
+    )[glyph] || Images;
   return <Icon size={18} strokeWidth={1.6} aria-hidden="true" />;
 }
 
@@ -82,7 +103,8 @@ function ToolButton({
             aria-label={label}
             className="studio-tool-button"
           >
-            <ToolIcon glyph={glyph}/><small>{label.split(" — ")[0]}</small>
+            <ToolIcon glyph={glyph} />
+            <small>{label.split(" — ")[0]}</small>
           </button>
         </TooltipTrigger>
         <TooltipContent side="right">
@@ -117,7 +139,8 @@ function MenuTool({
                   aria-label={label}
                   className="studio-tool-button"
                 >
-                  <ToolIcon glyph={glyph}/><small>{label.split(" — ")[0]}</small>
+                  <ToolIcon glyph={glyph} />
+                  <small>{label.split(" — ")[0]}</small>
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="right" align="start" className="w-72">
@@ -185,7 +208,10 @@ export function ToolPalette({
           고친 자리만 바꿉니다
         </DropdownMenuLabel>
         {FIX_ACTIONS.map((a) => (
-          <DropdownMenuItem key={a.action} onClick={() => onEditAction(a.action)}>
+          <DropdownMenuItem
+            key={a.action}
+            onClick={() => onEditAction(a.action)}
+          >
             {a.label}
           </DropdownMenuItem>
         ))}
@@ -201,7 +227,10 @@ export function ToolPalette({
           배경을 걷어냅니다
         </DropdownMenuLabel>
         {CUT_ACTIONS.map((a) => (
-          <DropdownMenuItem key={a.action} onClick={() => onEditAction(a.action)}>
+          <DropdownMenuItem
+            key={a.action}
+            onClick={() => onEditAction(a.action)}
+          >
             {a.label}
           </DropdownMenuItem>
         ))}
@@ -219,7 +248,10 @@ export function ToolPalette({
           원본은 그대로 두고 여백을 채웁니다
         </DropdownMenuLabel>
         {EXPAND_ACTIONS.map((a) => (
-          <DropdownMenuItem key={a.action} onClick={() => onEditAction(a.action)}>
+          <DropdownMenuItem
+            key={a.action}
+            onClick={() => onEditAction(a.action)}
+          >
             {a.label}
           </DropdownMenuItem>
         ))}

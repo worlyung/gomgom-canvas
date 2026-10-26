@@ -31,7 +31,7 @@ interface RunDeps {
   workspaceLeft?: number;
   workspaceRight?: number;
   workspaceBottom?: number;
-  setViewport?: (viewport: {x:number; y:number; scale:number}) => void;
+  setViewport?: (viewport: { x: number; y: number; scale: number }) => void;
   images: PlacedImage[];
   selectedIds: string[];
   prompt: string;
@@ -138,7 +138,15 @@ export async function runExpand(deps: {
   setIsGenerating: React.Dispatch<React.SetStateAction<boolean>>;
   toast: RunDeps["toast"];
 }) {
-  const { image, target, quality, setImages, setSelectedIds, setIsGenerating, toast } = deps;
+  const {
+    image,
+    target,
+    quality,
+    setImages,
+    setSelectedIds,
+    setIsGenerating,
+    toast,
+  } = deps;
   const [tw, th] = target.split("x").map(Number);
 
   const dispH = image.height;
@@ -204,12 +212,31 @@ export async function runExpand(deps: {
     setImages((prev) =>
       prev.map((img) =>
         img.id === placeholderId
-          ? { ...img, src: j.images[0], promptHint: `${image.promptHint || "이미지"}-전개`, generation: {prompt: `사이즈 전개 → ${target}`, provider: "openai", model: j.model || "gpt-image-2", size: target, quality, referenceIds: [image.id], createdAt: new Date().toISOString()} }
+          ? {
+              ...img,
+              src: j.images[0],
+              promptHint: `${image.promptHint || "이미지"}-전개`,
+              generation: {
+                prompt: `사이즈 전개 → ${target}`,
+                provider: "openai",
+                model: j.model || "gpt-image-2",
+                size: target,
+                quality,
+                referenceIds: [image.id],
+                createdAt: new Date().toISOString(),
+              },
+            }
           : img,
       ),
     );
     setSelectedIds([placeholderId]);
-    recordHistory({ kind: "사이즈 전개", prompt: `→ ${target}`, size: target, quality, refs: 1 });
+    recordHistory({
+      kind: "사이즈 전개",
+      prompt: `→ ${target}`,
+      size: target,
+      quality,
+      refs: 1,
+    });
     window.dispatchEvent(new Event("usage-updated"));
   } catch (error) {
     setImages((prev) => prev.filter((img) => img.id !== placeholderId));
@@ -289,7 +316,15 @@ export async function runRemoveBackground(deps: {
               ...img,
               src: j.images[0],
               promptHint: `${image.promptHint || "이미지"}-누끼`,
-              generation: {prompt: "배경 제거 (투명 PNG)", provider: "openai", model: j.model || "gpt-image-2", size, quality, referenceIds: [image.id], createdAt: new Date().toISOString()},
+              generation: {
+                prompt: "배경 제거 (투명 PNG)",
+                provider: "openai",
+                model: j.model || "gpt-image-2",
+                size,
+                quality,
+                referenceIds: [image.id],
+                createdAt: new Date().toISOString(),
+              },
             }
           : img,
       ),
@@ -366,7 +401,15 @@ export async function runCutout(deps: {
               ...img,
               src: cut,
               promptHint: `${image.promptHint || "이미지"}-오려냄`,
-              generation: {prompt: "배경 오려내기 (원본 보존)", provider: "local", model: "cutout", size: "원본", quality: "-", referenceIds: [image.id], createdAt: new Date().toISOString()},
+              generation: {
+                prompt: "배경 오려내기 (원본 보존)",
+                provider: "local",
+                model: "cutout",
+                size: "원본",
+                quality: "-",
+                referenceIds: [image.id],
+                createdAt: new Date().toISOString(),
+              },
             }
           : img,
       ),
@@ -407,7 +450,15 @@ export async function runCardnews(deps: {
   setIsGenerating: React.Dispatch<React.SetStateAction<boolean>>;
   toast: RunDeps["toast"];
 }) {
-  const { cover, lines, quality, setImages, setSelectedIds, setIsGenerating, toast } = deps;
+  const {
+    cover,
+    lines,
+    quality,
+    setImages,
+    setSelectedIds,
+    setIsGenerating,
+    toast,
+  } = deps;
 
   const coverSrc = await exportImageAsDataUrl(cover);
   const probe = new window.Image();
@@ -443,11 +494,16 @@ export async function runCardnews(deps: {
           body: JSON.stringify({ prompt, size, quality, refs: [coverSrc] }),
         });
         const j = await resp.json();
-        if (!resp.ok || !j.images?.length) throw new Error(j.error || "생성 실패");
+        if (!resp.ok || !j.images?.length)
+          throw new Error(j.error || "생성 실패");
         setImages((prev) =>
           prev.map((img) =>
             img.id === ids[i]
-              ? { ...img, src: j.images[0], promptHint: slugFromPrompt(lines[i]) }
+              ? {
+                  ...img,
+                  src: j.images[0],
+                  promptHint: slugFromPrompt(lines[i]),
+                }
               : img,
           ),
         );
@@ -456,8 +512,13 @@ export async function runCardnews(deps: {
       } catch (e) {
         // 취소면 남은 자리표시자까지 걷어내고 루프를 끊는다
         if (isCancel(e)) {
-          setImages((prev) => prev.filter((img) => !ids.slice(i).includes(img.id)));
-          toast({ title: "카드뉴스 생성 취소했습니다", description: `${ok}페이지까지 만들었어요` });
+          setImages((prev) =>
+            prev.filter((img) => !ids.slice(i).includes(img.id)),
+          );
+          toast({
+            title: "카드뉴스 생성 취소했습니다",
+            description: `${ok}페이지까지 만들었어요`,
+          });
           break;
         }
         setImages((prev) => prev.filter((img) => img.id !== ids[i]));
@@ -477,7 +538,10 @@ export async function runCardnews(deps: {
         quality,
         refs: 1,
       });
-      toast({ title: `카드뉴스 ${ok}페이지 완성`, description: "표지 스타일을 유지해 생성했어요" });
+      toast({
+        title: `카드뉴스 ${ok}페이지 완성`,
+        description: "표지 스타일을 유지해 생성했어요",
+      });
     }
   } finally {
     setIsGenerating(false);
@@ -557,7 +621,20 @@ export async function runMaskEdit(deps: {
     setImages((prev) =>
       prev.map((img) =>
         img.id === placeholderId
-          ? { ...img, src: j.images[0], promptHint: slugFromPrompt(prompt), generation: {prompt, provider: "openai", model: j.model || "gpt-image-2", size: editSize, quality, referenceIds: [image.id], createdAt: new Date().toISOString()} }
+          ? {
+              ...img,
+              src: j.images[0],
+              promptHint: slugFromPrompt(prompt),
+              generation: {
+                prompt,
+                provider: "openai",
+                model: j.model || "gpt-image-2",
+                size: editSize,
+                quality,
+                referenceIds: [image.id],
+                createdAt: new Date().toISOString(),
+              },
+            }
           : img,
       ),
     );
@@ -631,7 +708,10 @@ export async function runOpenAIGeneration(deps: RunDeps) {
     x = first.x + first.width + 20;
     y = first.y;
   } else {
-    x = ((canvasSize.width + (deps.workspaceLeft || 0)) / 2 - viewport.x) / viewport.scale - dispW / 2;
+    x =
+      ((canvasSize.width + (deps.workspaceLeft || 0)) / 2 - viewport.x) /
+        viewport.scale -
+      dispW / 2;
     y = (canvasSize.height / 2 - viewport.y) / viewport.scale - dispH / 2;
   }
 
@@ -675,37 +755,87 @@ export async function runOpenAIGeneration(deps: RunDeps) {
     // P4 요소 뽑기: 투명으로 시켰는데 배경이 채워져 왔으면 로컬 오려내기로 보정 (무료)
     const generated: PlacedImage[] = [];
     for (let index = 0; index < j.images.length; index++) {
-    let src: string = j.images[index];
-    if (transparent) {
-      const { hasTransparentEdge } = await import("@/lib/alpha-check");
-      if (!(await hasTransparentEdge(src))) {
-        try {
-          const { cutoutBackground } = await import("@/lib/cutout");
-          src = await cutoutBackground(src);
-          toast({ title: "배경이 남아 있어 자동으로 오려냈어요" });
-        } catch {
-          toast({ title: "배경이 남아 왔어요", description: "「✏️ 이 이미지 수정 ▸ 오려내기」로 직접 오려낼 수 있어요" });
+      let src: string = j.images[index];
+      if (transparent) {
+        const { hasTransparentEdge } = await import("@/lib/alpha-check");
+        if (!(await hasTransparentEdge(src))) {
+          try {
+            const { cutoutBackground } = await import("@/lib/cutout");
+            src = await cutoutBackground(src);
+            toast({ title: "배경이 남아 있어 자동으로 오려냈어요" });
+          } catch {
+            toast({
+              title: "배경이 남아 왔어요",
+              description:
+                "「✏️ 이 이미지 수정 ▸ 오려내기」로 직접 오려낼 수 있어요",
+            });
+          }
         }
       }
-    }
 
-    const actual = await loadOutputImage(src);
-    generated.push({id: index === 0 ? placeholderId : `${placeholderId}-${index}`, src,
-      x: x + index * (dispW + 24), y, width:dispW, height:dispW * actual.naturalHeight / actual.naturalWidth,
-      rotation:0, isGenerated:true, promptHint:slugFromPrompt(prompt),generation:{prompt,provider:deps.provider||"openai",model:j.model||(deps.provider==="gemini"?deps.geminiModel||"gemini":deps.provider==="grok"?"grok-imagine-image-2.0":deps.openaiModel||"gpt-image-2"),size,quality,referenceIds:selectedIds.slice(0,16),createdAt:new Date().toISOString()}});
+      const actual = await loadOutputImage(src);
+      generated.push({
+        id: index === 0 ? placeholderId : `${placeholderId}-${index}`,
+        src,
+        x: x + index * (dispW + 24),
+        y,
+        width: dispW,
+        height: (dispW * actual.naturalHeight) / actual.naturalWidth,
+        rotation: 0,
+        isGenerated: true,
+        promptHint: slugFromPrompt(prompt),
+        generation: {
+          prompt,
+          provider: deps.provider || "openai",
+          model:
+            j.model ||
+            (deps.provider === "gemini"
+              ? deps.geminiModel || "gemini"
+              : deps.provider === "grok"
+                ? "grok-imagine-image-2.0"
+                : deps.openaiModel || "gpt-image-2"),
+          size,
+          quality,
+          referenceIds: selectedIds.slice(0, 16),
+          createdAt: new Date().toISOString(),
+        },
+      });
     }
-    setImages(prev => [...prev.filter(img => img.id !== placeholderId), ...generated]);
-    setSelectedIds(generated.map(img => img.id));
+    setImages((prev) => [
+      ...prev.filter((img) => img.id !== placeholderId),
+      ...generated,
+    ]);
+    setSelectedIds(generated.map((img) => img.id));
     if (deps.setViewport) {
       const left = deps.workspaceLeft || 0;
-      const availableWidth = canvasSize.width-left-(deps.workspaceRight || 0);
-      const availableHeight = canvasSize.height-160-(deps.workspaceBottom || 60);
+      const availableWidth =
+        canvasSize.width - left - (deps.workspaceRight || 0);
+      const availableHeight =
+        canvasSize.height - 160 - (deps.workspaceBottom || 60);
       const width = generated.length * (dispW + 24) - 24;
-      const height = Math.max(...generated.map(img => img.height));
-      const scale = Math.min(viewport.scale, Math.max(.1, (availableWidth-60)/width), Math.max(.1,(availableHeight-30)/height));
-      deps.setViewport({scale, x:left+(availableWidth-width*scale)/2-x*scale,y:160+(availableHeight-height*scale)/2-y*scale});
+      const height = Math.max(...generated.map((img) => img.height));
+      const scale = Math.min(
+        viewport.scale,
+        Math.max(0.1, (availableWidth - 60) / width),
+        Math.max(0.1, (availableHeight - 30) / height),
+      );
+      deps.setViewport({
+        scale,
+        x: left + (availableWidth - width * scale) / 2 - x * scale,
+        y: 160 + (availableHeight - height * scale) / 2 - y * scale,
+      });
     }
-    recordHistory({ kind: "생성", prompt, size, quality, refs: refs.length,model:generated[0]?.generation?.model,provider:deps.provider||"openai",referenceIds:selectedIds.slice(0,16),resultIds:generated.map(i=>i.id) });
+    recordHistory({
+      kind: "생성",
+      prompt,
+      size,
+      quality,
+      refs: refs.length,
+      model: generated[0]?.generation?.model,
+      provider: deps.provider || "openai",
+      referenceIds: selectedIds.slice(0, 16),
+      resultIds: generated.map((i) => i.id),
+    });
     window.dispatchEvent(new Event("usage-updated"));
   } catch (error) {
     setImages((prev) => prev.filter((img) => img.id !== placeholderId));

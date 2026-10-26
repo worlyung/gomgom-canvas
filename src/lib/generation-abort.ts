@@ -4,7 +4,8 @@ let controller: AbortController | null = null;
 
 /** 진행 중인 생성 요청에 붙일 signal. 없으면 새로 연다. */
 export function genSignal(): AbortSignal {
-  if (!controller || controller.signal.aborted) controller = new AbortController();
+  if (!controller || controller.signal.aborted)
+    controller = new AbortController();
   return controller.signal;
 }
 

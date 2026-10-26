@@ -17,7 +17,8 @@ export async function GET(
 ) {
   const { id } = await ctx.params;
   const boardId = safeId(id);
-  if (!boardId) return NextResponse.json({ error: "잘못된 id" }, { status: 400 });
+  if (!boardId)
+    return NextResponse.json({ error: "잘못된 id" }, { status: 400 });
 
   const meta = readMeta(boardId);
   if (!meta) return NextResponse.json({ error: "없는 보드" }, { status: 404 });
@@ -39,7 +40,8 @@ export async function DELETE(
 ) {
   const { id } = await ctx.params;
   const boardId = safeId(id);
-  if (!boardId) return NextResponse.json({ error: "잘못된 id" }, { status: 400 });
+  if (!boardId)
+    return NextResponse.json({ error: "잘못된 id" }, { status: 400 });
   deleteBoard(boardId);
   return NextResponse.json({ ok: true });
 }

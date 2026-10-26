@@ -17,7 +17,9 @@ function costOf(usage: any, model?: string): number {
   // gpt-image-2.5 는 공시가가 2.0의 2배 (2026-09 확인)
   const mult = model?.includes("2.5") ? 2 : 1;
   return (
-    ((textIn * RATE.textIn + imageIn * RATE.imageIn + imageOut * RATE.imageOut) *
+    ((textIn * RATE.textIn +
+      imageIn * RATE.imageIn +
+      imageOut * RATE.imageOut) *
       mult) /
     1_000_000
   );
@@ -27,12 +29,18 @@ export async function GET() {
   const today = { calls: 0, cost: 0, unpriced: 0 };
   const total = { calls: 0, cost: 0, unpriced: 0 };
   try {
-    const lines = fs.readFileSync(USAGE_FILE, "utf8").split("\n").filter(Boolean);
+    const lines = fs
+      .readFileSync(USAGE_FILE, "utf8")
+      .split("\n")
+      .filter(Boolean);
     const todayStr = new Date().toLocaleDateString("sv-SE"); // YYYY-MM-DD, 로컬(KST)
     for (const line of lines) {
       try {
         const rec = JSON.parse(line);
-        const unknown = rec.provider !== "openai" || !rec.usage?.input_tokens_details || typeof rec.usage.output_tokens !== "number";
+        const unknown =
+          rec.provider !== "openai" ||
+          !rec.usage?.input_tokens_details ||
+          typeof rec.usage.output_tokens !== "number";
         const cost = unknown ? 0 : costOf(rec.usage, rec.model);
         total.calls++;
         if (unknown) total.unpriced++;

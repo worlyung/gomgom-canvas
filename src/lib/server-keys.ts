@@ -23,7 +23,10 @@ function readFromFile(file: string, name: string): string | undefined {
 
 export function getKey(name: string): string | undefined {
   return (
-    readFromFile(LOCAL_ENV, name) || readFromFile(PROJECT_ENV, name) || process.env[name] || readFromFile(HOME_ENV, name)
+    readFromFile(LOCAL_ENV, name) ||
+    readFromFile(PROJECT_ENV, name) ||
+    process.env[name] ||
+    readFromFile(HOME_ENV, name)
   );
 }
 

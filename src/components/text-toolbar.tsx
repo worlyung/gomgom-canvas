@@ -23,8 +23,14 @@ import {
 
 // 전부 구글 폰트(OFL) — 상업 사용 자유. 선택할 때 해당 폰트만 내려받는다.
 export const FONT_CHOICES = [
-  { label: "고딕 (기본)", value: "'Noto Sans KR', 'Malgun Gothic', sans-serif" },
-  { label: "포스터 제목", value: "'Black Han Sans', 'Malgun Gothic', sans-serif" },
+  {
+    label: "고딕 (기본)",
+    value: "'Noto Sans KR', 'Malgun Gothic', sans-serif",
+  },
+  {
+    label: "포스터 제목",
+    value: "'Black Han Sans', 'Malgun Gothic', sans-serif",
+  },
   { label: "둥근 제목", value: "'Do Hyeon', 'Malgun Gothic', sans-serif" },
   { label: "귀여운 제목", value: "'Jua', 'Malgun Gothic', sans-serif" },
   { label: "굵은 고딕", value: "'Gothic A1', 'Malgun Gothic', sans-serif" },
@@ -87,7 +93,9 @@ export function TextToolbar({ item, onChange, onDelete }: Props) {
           </SelectTrigger>
           <SelectContent className="max-h-80">
             <SelectGroup>
-              <SelectLabel className="text-[11px]">기본 (구글 폰트, 상업 사용 자유)</SelectLabel>
+              <SelectLabel className="text-[11px]">
+                기본 (구글 폰트, 상업 사용 자유)
+              </SelectLabel>
               {FONT_CHOICES.map((f) => (
                 <SelectItem key={f.value} value={f.value}>
                   <span style={{ fontFamily: f.value }}>{f.label}</span>
@@ -107,7 +115,9 @@ export function TextToolbar({ item, onChange, onDelete }: Props) {
               </SelectGroup>
             )}
             {!known && curFamily && (
-              <SelectItem value={item.fontFamily}>{curFamily} (이 PC에 없음)</SelectItem>
+              <SelectItem value={item.fontFamily}>
+                {curFamily} (이 PC에 없음)
+              </SelectItem>
             )}
           </SelectContent>
         </Select>

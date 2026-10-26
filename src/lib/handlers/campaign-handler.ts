@@ -115,14 +115,19 @@ export async function runCampaign(deps: Deps) {
           }),
         });
         const j = await resp.json();
-        if (!resp.ok || !j.images?.length) throw new Error(j.error || "생성 실패");
+        if (!resp.ok || !j.images?.length)
+          throw new Error(j.error || "생성 실패");
 
         const src: string = j.images[0];
         if (i === 0) keyVisual = src as string;
         setImages((prev) =>
           prev.map((img) =>
             img.id === ids[i]
-              ? { ...img, src, promptHint: `${item.role}-${slugFromPrompt(item.prompt)}` }
+              ? {
+                  ...img,
+                  src,
+                  promptHint: `${item.role}-${slugFromPrompt(item.prompt)}`,
+                }
               : img,
           ),
         );
@@ -131,8 +136,13 @@ export async function runCampaign(deps: Deps) {
       } catch (e) {
         // 취소면 남은 자리표시자까지 걷어내고 루프를 끊는다
         if (isCancel(e)) {
-          setImages((prev) => prev.filter((img) => !ids.slice(i).includes(img.id)));
-          toast({ title: "캠페인 생성 취소했습니다", description: `${done}종까지 만들었어요` });
+          setImages((prev) =>
+            prev.filter((img) => !ids.slice(i).includes(img.id)),
+          );
+          toast({
+            title: "캠페인 생성 취소했습니다",
+            description: `${done}종까지 만들었어요`,
+          });
           break;
         }
         setImages((prev) => prev.filter((img) => img.id !== ids[i]));

@@ -10,7 +10,8 @@ export async function POST(
 ) {
   const { id } = await ctx.params;
   const boardId = safeId(id);
-  if (!boardId) return NextResponse.json({ error: "잘못된 id" }, { status: 400 });
+  if (!boardId)
+    return NextResponse.json({ error: "잘못된 id" }, { status: 400 });
 
   const { imageId, dataUrl } = await req.json();
   if (!imageId || typeof dataUrl !== "string" || !dataUrl.startsWith("data:")) {

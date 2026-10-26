@@ -61,7 +61,9 @@ export function HistoryPanel({ onApplyEntry, onClose }: Props) {
                 })}
               </span>
             </div>
-            <p className="mt-1.5 line-clamp-3 text-xs leading-relaxed">{e.prompt}</p>
+            <p className="mt-1.5 line-clamp-3 text-xs leading-relaxed">
+              {e.prompt}
+            </p>
             <div className="mt-2 flex gap-1.5">
               <Button
                 variant="secondary"

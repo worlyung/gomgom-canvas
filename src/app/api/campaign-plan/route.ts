@@ -41,7 +41,10 @@ export async function POST(req: NextRequest) {
   for (const model of models) {
     const resp = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         model,
         messages: [
@@ -66,11 +69,17 @@ export async function POST(req: NextRequest) {
         }
         return NextResponse.json(plan);
       } catch {
-        return NextResponse.json({ error: "계획을 읽지 못했습니다" }, { status: 502 });
+        return NextResponse.json(
+          { error: "계획을 읽지 못했습니다" },
+          { status: 502 },
+        );
       }
     }
     lastErr = `${model}: ${resp.status}`;
     if (resp.status !== 404 && resp.status !== 400) break;
   }
-  return NextResponse.json({ error: `분해 실패 — ${lastErr}` }, { status: 502 });
+  return NextResponse.json(
+    { error: `분해 실패 — ${lastErr}` },
+    { status: 502 },
+  );
 }

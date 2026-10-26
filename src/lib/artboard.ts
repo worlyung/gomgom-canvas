@@ -4,7 +4,12 @@ import type { Artboard } from "@/types/canvas";
 export const DEFAULT_DPI = 300;
 
 // 국내 인쇄물에서 자주 쓰는 규격 (mm, 세로 기준)
-export const PAPER_PRESETS: { id: string; label: string; w: number; h: number }[] = [
+export const PAPER_PRESETS: {
+  id: string;
+  label: string;
+  w: number;
+  h: number;
+}[] = [
   { id: "A4", label: "A4 (210×297)", w: 210, h: 297 },
   { id: "A3", label: "A3 (297×420)", w: 297, h: 420 },
   { id: "A2", label: "A2 (420×594)", w: 420, h: 594 },

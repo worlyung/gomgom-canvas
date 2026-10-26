@@ -54,7 +54,11 @@ export function ProviderSettings({
   list: ProviderStatus[];
   editLocked: boolean;
   onSaved: () => void;
-  toast: (p: { title: string; description?: string; variant?: "default" | "destructive" }) => void;
+  toast: (p: {
+    title: string;
+    description?: string;
+    variant?: "default" | "destructive";
+  }) => void;
 }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -89,8 +93,8 @@ export function ProviderSettings({
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        키는 <strong>이 컴퓨터의 서버에만</strong> 저장되고 브라우저로는 내려오지
-        않습니다. 제공자마다 되는 기능이 다릅니다.
+        키는 <strong>이 컴퓨터의 서버에만</strong> 저장되고 브라우저로는
+        내려오지 않습니다. 제공자마다 되는 기능이 다릅니다.
       </p>
       {editLocked && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs">

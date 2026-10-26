@@ -30,10 +30,7 @@ import {
 import { SpinnerIcon } from "@/components/icons";
 import { checkOS } from "@/utils/os-utils";
 import { exportVideoAsGif } from "@/utils/gif-export";
-import type {
-  PlacedImage,
-  PlacedVideo,
-} from "@/types/canvas";
+import type { PlacedImage, PlacedVideo } from "@/types/canvas";
 
 interface CanvasContextMenuProps {
   selectedIds: string[];
@@ -220,101 +217,101 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
           </ContextMenuItem>
         )}
       {false && (
-      <ContextMenuSub>
-        <ContextMenuSubTrigger
-          disabled={
-            selectedIds.length !== 1 ||
-            videos?.some((v) => selectedIds.includes(v.id))
-          }
-          className="flex items-center gap-2"
-          onMouseEnter={() => {
-            // Reset input value and set target when hovering over the submenu trigger
-            setIsolateInputValue("");
-            if (
-              selectedIds.length === 1 &&
-              !videos?.some((v) => v.id === selectedIds[0])
-            ) {
-              setIsolateTarget(selectedIds[0]);
+        <ContextMenuSub>
+          <ContextMenuSubTrigger
+            disabled={
+              selectedIds.length !== 1 ||
+              videos?.some((v) => selectedIds.includes(v.id))
             }
-          }}
-        >
-          <Filter className="h-4 w-4" />
-          Isolate Object
-        </ContextMenuSubTrigger>
-        <ContextMenuSubContent
-          className="w-72 p-3"
-          sideOffset={10}
-          onPointerDownOutside={(e) => e.preventDefault()}
-        >
-          <div
-            className="flex flex-col gap-2"
-            onMouseDown={(e) => e.stopPropagation()}
+            className="flex items-center gap-2"
+            onMouseEnter={() => {
+              // Reset input value and set target when hovering over the submenu trigger
+              setIsolateInputValue("");
+              if (
+                selectedIds.length === 1 &&
+                !videos?.some((v) => v.id === selectedIds[0])
+              ) {
+                setIsolateTarget(selectedIds[0]);
+              }
+            }}
           >
-            <Label
-              htmlFor="isolate-context-input"
-              className="text-sm font-medium"
+            <Filter className="h-4 w-4" />
+            Isolate Object
+          </ContextMenuSubTrigger>
+          <ContextMenuSubContent
+            className="w-72 p-3"
+            sideOffset={10}
+            onPointerDownOutside={(e) => e.preventDefault()}
+          >
+            <div
+              className="flex flex-col gap-2"
+              onMouseDown={(e) => e.stopPropagation()}
             >
-              What to isolate:
-            </Label>
-            <div className="flex gap-2">
-              <Input
-                id="isolate-context-input"
-                type="text"
-                placeholder="e.g. car, face, person"
-                value={isolateInputValue}
-                onChange={(e) => setIsolateInputValue(e.target.value)}
-                style={{ fontSize: "16px" }}
-                onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    isolateInputValue.trim() &&
-                    !isIsolating
-                  ) {
+              <Label
+                htmlFor="isolate-context-input"
+                className="text-sm font-medium"
+              >
+                What to isolate:
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  id="isolate-context-input"
+                  type="text"
+                  placeholder="e.g. car, face, person"
+                  value={isolateInputValue}
+                  onChange={(e) => setIsolateInputValue(e.target.value)}
+                  style={{ fontSize: "16px" }}
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === "Enter" &&
+                      isolateInputValue.trim() &&
+                      !isIsolating
+                    ) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleIsolate();
+                    }
+                  }}
+                  onFocus={(e) => {
+                    // Select all text on focus for easier replacement
+                    e.target.select();
+                  }}
+                  className="flex-1"
+                  autoFocus
+                  disabled={isIsolating}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    handleIsolate();
-                  }
-                }}
-                onFocus={(e) => {
-                  // Select all text on focus for easier replacement
-                  e.target.select();
-                }}
-                className="flex-1"
-                autoFocus
-                disabled={isIsolating}
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  if (isolateInputValue.trim() && !isIsolating) {
-                    handleIsolate();
-                  }
-                }}
-                disabled={!isolateInputValue.trim() || isIsolating}
-              >
-                {isIsolating ? (
-                  <>
-                    <SpinnerIcon className="h-4 w-4 animate-spin mr-1 text-white" />
-                    <span className="text-white">Processing...</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="text-white">Run</span>
-                    <span className="flex flex-row space-x-0.5">
-                      <kbd className="flex items-center justify-center text-white tracking-tighter rounded-xl border px-1 font-mono bg-white/10 border-white/10 h-6 min-w-6 text-xs">
-                        ↵
-                      </kbd>
-                    </span>
-                  </>
-                )}
-              </Button>
+                    if (isolateInputValue.trim() && !isIsolating) {
+                      handleIsolate();
+                    }
+                  }}
+                  disabled={!isolateInputValue.trim() || isIsolating}
+                >
+                  {isIsolating ? (
+                    <>
+                      <SpinnerIcon className="h-4 w-4 animate-spin mr-1 text-white" />
+                      <span className="text-white">Processing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-white">Run</span>
+                      <span className="flex flex-row space-x-0.5">
+                        <kbd className="flex items-center justify-center text-white tracking-tighter rounded-xl border px-1 font-mono bg-white/10 border-white/10 h-6 min-w-6 text-xs">
+                          ↵
+                        </kbd>
+                      </span>
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
-          </div>
-        </ContextMenuSubContent>
-      </ContextMenuSub>
+          </ContextMenuSubContent>
+        </ContextMenuSub>
       )}
       <ContextMenuItem
         onClick={handleCombineImages}

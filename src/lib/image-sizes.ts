@@ -34,8 +34,10 @@ export function normalizeSize(
   }
   const rw = Math.round(w / 16) * 16;
   const rh = Math.round(h / 16) * 16;
-  if (Math.max(rw / rh, rh / rw) > 3) return { error: "가로·세로 비율은 3:1에서 1:3 사이여야 해요" };
-  if (rw * rh < MIN_PIXELS) return { error: "너무 작아요 — 전체 픽셀이 655,360 이상이어야 해요" };
+  if (Math.max(rw / rh, rh / rw) > 3)
+    return { error: "가로·세로 비율은 3:1에서 1:3 사이여야 해요" };
+  if (rw * rh < MIN_PIXELS)
+    return { error: "너무 작아요 — 전체 픽셀이 655,360 이상이어야 해요" };
   if (Math.max(rw, rh) > MAX_EDGE) {
     return { error: `가장 긴 변은 ${MAX_EDGE}px 이하여야 합니다` };
   }
@@ -51,18 +53,31 @@ export function normalizeSize(
 export function sizeForAspect(w: number, h: number): string {
   const ratio = Math.max(1 / 3, Math.min(3, w / h || 1));
   const height = Math.round(Math.sqrt(1_327_104 / ratio) / 16) * 16;
-  const width = Math.round(height * ratio / 16) * 16;
+  const width = Math.round((height * ratio) / 16) * 16;
   const result = normalizeSize(width, height);
   return "value" in result ? result.value : "1024x1024";
 }
 
 export function promptImageSize(prompt: string): string | null {
   const matches = [...prompt.matchAll(/\b(\d{1,2})\s*[:：]\s*(\d{1,2})\b/g)];
-  const sizes = matches.filter(m => +m[1] > 0 && +m[2] > 0 && Math.max(+m[1] / +m[2], +m[2] / +m[1]) <= 3);
+  const sizes = matches.filter(
+    (m) =>
+      +m[1] > 0 && +m[2] > 0 && Math.max(+m[1] / +m[2], +m[2] / +m[1]) <= 3,
+  );
   if (!sizes.length) return null;
-  const ratios = new Set(sizes.map(m => +m[1] / +m[2]));
+  const ratios = new Set(sizes.map((m) => +m[1] / +m[2]));
   if (ratios.size !== 1) return null;
   const ratio = +sizes[0][1] / +sizes[0][2];
-  const exact = { "1": "1024x1024", [16/9]: "1536x864", [9/16]: "864x1536", "1.5": "1536x1024", [2/3]: "1024x1536", "3": "2880x960" };
-  return exact[String(ratio) as keyof typeof exact] || sizeForAspect(+sizes[0][1], +sizes[0][2]);
+  const exact = {
+    "1": "1024x1024",
+    [16 / 9]: "1536x864",
+    [9 / 16]: "864x1536",
+    "1.5": "1536x1024",
+    [2 / 3]: "1024x1536",
+    "3": "2880x960",
+  };
+  return (
+    exact[String(ratio) as keyof typeof exact] ||
+    sizeForAspect(+sizes[0][1], +sizes[0][2])
+  );
 }

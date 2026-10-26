@@ -33,7 +33,8 @@ export async function GET(req: NextRequest) {
   const buf = fs.readFileSync(full);
   return new NextResponse(buf, {
     headers: {
-      "Content-Type": MIME[path.extname(file).toLowerCase()] || "application/octet-stream",
+      "Content-Type":
+        MIME[path.extname(file).toLowerCase()] || "application/octet-stream",
       "Cache-Control": "public, max-age=86400",
     },
   });

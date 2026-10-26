@@ -25,12 +25,30 @@ export async function POST(req: NextRequest) {
   const openaiModel: string | undefined = body.openaiModel;
 
   if (typeof prompt !== "string" || !prompt.trim()) {
-    return NextResponse.json({ error: "프롬프트가 비었습니다" }, { status: 400 });
+    return NextResponse.json(
+      { error: "프롬프트가 비었습니다" },
+      { status: 400 },
+    );
   }
-  if (!["openai", "gemini", "grok"].includes(provider)) return NextResponse.json({error:"알 수 없는 생성 서비스예요"}, {status:400});
+  if (!["openai", "gemini", "grok"].includes(provider))
+    return NextResponse.json(
+      { error: "알 수 없는 생성 서비스예요" },
+      { status: 400 },
+    );
   const dimensions = typeof size === "string" && /^(\d+)x(\d+)$/.exec(size);
-  const normalized = dimensions ? normalizeSize(+dimensions[1], +dimensions[2]) : {error:"이미지 크기를 확인해 주세요"};
-  if ("error" in normalized || normalized.value !== size) return NextResponse.json({error: "error" in normalized ? normalized.error : "가로·세로는 16의 배수여야 해요"}, {status:400});
+  const normalized = dimensions
+    ? normalizeSize(+dimensions[1], +dimensions[2])
+    : { error: "이미지 크기를 확인해 주세요" };
+  if ("error" in normalized || normalized.value !== size)
+    return NextResponse.json(
+      {
+        error:
+          "error" in normalized
+            ? normalized.error
+            : "가로·세로는 16의 배수여야 해요",
+      },
+      { status: 400 },
+    );
 
   try {
     const result = await generateWith(provider, {
@@ -45,7 +63,10 @@ export async function POST(req: NextRequest) {
       openaiModel,
     });
     if (!result.images.length) {
-      return NextResponse.json({ error: "결과 이미지가 없습니다" }, { status: 502 });
+      return NextResponse.json(
+        { error: "결과 이미지가 없습니다" },
+        { status: 502 },
+      );
     }
 
     // 사용량 기록 (F-12)
@@ -69,7 +90,11 @@ export async function POST(req: NextRequest) {
       console.error("usage.jsonl 기록 실패:", e);
     }
 
-    return NextResponse.json({ images: result.images, usage: result.usage, model: result.model });
+    return NextResponse.json({
+      images: result.images,
+      usage: result.usage,
+      model: result.model,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "생성 실패";
     console.error("generate 실패:", msg);

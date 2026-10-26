@@ -1,0 +1,7 @@
+# Vendored upstream distributions; keep their original formatting.
+public/krmap/
+public/gif.worker.js
+
+# Build output and generated declarations.
+.next/
+next-env.d.ts

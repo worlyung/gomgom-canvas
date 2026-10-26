@@ -51,9 +51,15 @@ export function ArtboardDialog({
   let w = preset.id === "custom" ? Number(customW) || 0 : preset.w;
   let h = preset.id === "custom" ? Number(customH) || 0 : preset.h;
   if (landscape) [w, h] = [h, w];
-  const valid = w >= 50 && h >= 50 && Math.max(mmToPx(w), mmToPx(h)) <= 16384 && mmToPx(w) * mmToPx(h) <= MAX_EXPORT_PIXELS;
+  const valid =
+    w >= 50 &&
+    h >= 50 &&
+    Math.max(mmToPx(w), mmToPx(h)) <= 16384 &&
+    mmToPx(w) * mmToPx(h) <= MAX_EXPORT_PIXELS;
   const name =
-    preset.id === "custom" ? `${w}x${h}mm` : `${preset.id} ${landscape ? "가로" : "세로"}`;
+    preset.id === "custom"
+      ? `${w}x${h}mm`
+      : `${preset.id} ${landscape ? "가로" : "세로"}`;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -61,8 +67,9 @@ export function ArtboardDialog({
         <DialogHeader>
           <DialogTitle>포스터 판</DialogTitle>
           <DialogDescription>
-            인쇄 크기의 흰 판을 캔버스에 깔고, 내보낼 때 그 안만 {DEFAULT_DPI}dpi로 굽습니다.
-            글씨·도형 레이어는 그대로 남아 나중에 고쳐 다시 뽑을 수 있습니다.
+            인쇄 크기의 흰 판을 캔버스에 깔고, 내보낼 때 그 안만 {DEFAULT_DPI}
+            dpi로 굽습니다. 글씨·도형 레이어는 그대로 남아 나중에 고쳐 다시 뽑을
+            수 있습니다.
           </DialogDescription>
         </DialogHeader>
 
@@ -70,8 +77,8 @@ export function ArtboardDialog({
           <div className="rounded-xl border bg-muted/40 p-3 text-sm">
             <div className="font-medium">지금 판: {artboard.name}</div>
             <div className="text-xs text-muted-foreground">
-              {artboard.widthMm}×{artboard.heightMm}mm · {artboard.width}×{artboard.height}px ·{" "}
-              {artboard.dpi}dpi
+              {artboard.widthMm}×{artboard.heightMm}mm · {artboard.width}×
+              {artboard.height}px · {artboard.dpi}dpi
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
               <Button size="sm" variant="secondary" onClick={onFit}>
@@ -80,7 +87,12 @@ export function ArtboardDialog({
               <Button size="sm" onClick={onExport} disabled={!!exporting}>
                 {exporting || "인쇄용 PNG 내보내기"}
               </Button>
-              <Button size="sm" variant="ghost" onClick={onRemove} disabled={!!exporting}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={onRemove}
+                disabled={!!exporting}
+              >
                 판 없애기
               </Button>
             </div>
