@@ -3,6 +3,13 @@ import React from "react";
 import { genFetch, isCancel } from "@/lib/generation-abort";
 import { normalizeSize, sizeForAspect } from "@/lib/image-sizes";
 import { loadOutputImage } from "@/lib/canvas-output";
+import {
+  comparisonPrompt,
+  continueReferenceBrief,
+  isFollowupRequest,
+  recentCanvasBrief,
+  stableBriefFromPrompt,
+} from "@/lib/compare-prompts";
 import type { PlacedImage } from "@/types/canvas";
 import { ToastAction, type ToastActionElement } from "@/components/ui/toast";
 
@@ -28,6 +35,10 @@ function retryAction(fn: () => void): ToastActionElement {
 
 interface RunDeps {
   n?: number;
+  inheritReferencePrompt?: boolean;
+  userPrompt?: string;
+  referenceMode?: "style" | "content";
+  onError?: (message: string) => void;
   workspaceLeft?: number;
   workspaceRight?: number;
   workspaceBottom?: number;
@@ -115,6 +126,44 @@ async function exportImageAsDataUrl(img: PlacedImage): Promise<string> {
     canvas.height,
   );
   return canvas.toDataURL("image/png");
+}
+
+// 느낌 참조는 색·큰 형태만 남긴다. 원본의 글자를 모델에 읽히지 않게 한다.
+async function makeStyleReference(src: string): Promise<string> {
+  const image = new window.Image();
+  image.src = src;
+  await new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = reject;
+  });
+  const aspect = image.naturalWidth / image.naturalHeight;
+  const sample = document.createElement("canvas");
+  sample.width = Math.max(1, Math.round(32 * Math.min(1, aspect)));
+  sample.height = Math.max(1, Math.round(32 / Math.max(1, aspect)));
+  const sampleContext = sample.getContext("2d");
+  if (!sampleContext) throw new Error("참조 이미지를 처리하지 못했어요");
+  sampleContext.drawImage(image, 0, 0, sample.width, sample.height);
+
+  const output = document.createElement("canvas");
+  // 편집 API의 입력으로도 안정적으로 처리되도록 정사각형 안에 배치한다.
+  output.width = 768;
+  output.height = 768;
+  const context = output.getContext("2d");
+  if (!context) throw new Error("참조 이미지를 처리하지 못했어요");
+  context.fillStyle = "#f5f1e9";
+  context.fillRect(0, 0, output.width, output.height);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  const width = Math.round(768 * Math.min(1, aspect));
+  const height = Math.round(768 / Math.max(1, aspect));
+  context.drawImage(
+    sample,
+    Math.round((output.width - width) / 2),
+    Math.round((output.height - height) / 2),
+    width,
+    height,
+  );
+  return output.toDataURL("image/png");
 }
 
 export const placeholderSrc = (() => {
@@ -696,6 +745,50 @@ export async function runOpenAIGeneration(deps: RunDeps) {
     });
   }
   const refImages = selected.slice(0, 16);
+  const userPrompt = deps.userPrompt || prompt;
+  const isFollowup = isFollowupRequest(userPrompt);
+  const selfBrief = stableBriefFromPrompt(userPrompt);
+  const selectedBrief = refImages
+    .map(
+      (image) =>
+        (image.generation?.brief
+          ? stableBriefFromPrompt(image.generation.brief) ||
+            image.generation.brief
+          : undefined) ||
+        (image.generation?.prompt
+          ? stableBriefFromPrompt(image.generation.prompt)
+          : undefined),
+    )
+    .find(Boolean);
+  const inherited =
+    deps.referenceMode === "content"
+      ? selectedBrief || recentCanvasBrief(images)
+      : recentCanvasBrief(images) || selectedBrief;
+  const brief =
+    selfBrief ||
+    (isFollowup && deps.inheritReferencePrompt !== false
+      ? inherited
+      : undefined);
+  if (isFollowup && !brief && !refImages.length) {
+    toast({
+      title: "이어갈 작업을 찾지 못했어요",
+      description:
+        "이전 시안을 한 장 선택하거나 행사·제품 내용을 함께 적어주세요",
+      variant: "destructive",
+    });
+    return;
+  }
+  const effectivePrompt = continueReferenceBrief(
+    prompt,
+    isFollowup ? brief : undefined,
+    deps.inheritReferencePrompt !== false,
+  );
+  if (!effectivePrompt.trim()) {
+    toast({ title: "이미지 내용을 적어주세요", variant: "destructive" });
+    return;
+  }
+  const count =
+    deps.provider === "openai" ? Math.min(Math.max(deps.n || 1, 1), 4) : 1;
 
   // 출력 배치 위치·크기
   const [w, h] = size.split("x").map(Number);
@@ -732,30 +825,66 @@ export async function runOpenAIGeneration(deps: RunDeps) {
 
   setIsGenerating(true);
   try {
-    const refs = await Promise.all(refImages.map(exportImageAsDataUrl));
-    const resp = await genFetch("/api/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt,
-        size,
-        quality,
-        n: deps.n || 1,
-        refs,
-        ...(transparent && { transparent: true }),
-        ...(provider && { provider }),
-        ...(geminiModel && { geminiModel }),
-        ...(openaiModel && { openaiModel }),
-      }),
-    });
-    const j = await resp.json();
-    if (!resp.ok) throw new Error(j.error || `HTTP ${resp.status}`);
-    if (!j.images?.length) throw new Error("결과 이미지가 없습니다");
+    const exportedRefs = await Promise.all(refImages.map(exportImageAsDataUrl));
+    const refs =
+      deps.referenceMode === "content"
+        ? exportedRefs
+        : await Promise.all(exportedRefs.map(makeStyleReference));
+    const generationPrompt =
+      refs.length && deps.referenceMode !== "content"
+        ? `${effectivePrompt}\n\n참조 이미지는 색감·필치·여백의 느낌만 참고하라. 참조 이미지의 글자·숫자·고유명사·로고·제품·인물 자세·구도는 옮기지 마라. 최종 글자는 현재 작업 정보에서만 가져와라.`
+        : effectivePrompt;
+    const outputs: { src: string; model?: string }[] = [];
+    let requestError: unknown;
+    for (let index = 0; index < count; index++) {
+      try {
+        const resp = await genFetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt:
+              count > 1
+                ? comparisonPrompt(generationPrompt, index)
+                : generationPrompt,
+            size,
+            quality,
+            n: 1,
+            refs,
+            ...(transparent && { transparent: true }),
+            ...(provider && { provider }),
+            ...(geminiModel && { geminiModel }),
+            ...(openaiModel && { openaiModel }),
+          }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) throw new Error(result.error || `HTTP ${resp.status}`);
+        if (!result.images?.length) throw new Error("결과 이미지가 없습니다");
+        outputs.push({ src: result.images[0], model: result.model });
+      } catch (error) {
+        requestError = error;
+        break;
+      }
+    }
+    if (!outputs.length)
+      throw requestError || new Error("결과 이미지가 없습니다");
+    if (requestError) {
+      const reason =
+        requestError instanceof Error
+          ? requestError.message
+          : "알 수 없는 오류";
+      deps.onError?.(`${outputs.length}장만 완성했어요. 남은 시안: ${reason}`);
+      toast({
+        title: `${outputs.length}장만 완성했어요`,
+        description: isCancel(requestError)
+          ? "취소 전에 완성된 이미지는 캔버스에 남깁니다"
+          : `나머지 시안 요청이 실패했어요: ${reason}`,
+      });
+    }
 
     // P4 요소 뽑기: 투명으로 시켰는데 배경이 채워져 왔으면 로컬 오려내기로 보정 (무료)
     const generated: PlacedImage[] = [];
-    for (let index = 0; index < j.images.length; index++) {
-      let src: string = j.images[index];
+    for (let index = 0; index < outputs.length; index++) {
+      let src: string = outputs[index].src;
       if (transparent) {
         const { hasTransparentEdge } = await import("@/lib/alpha-check");
         if (!(await hasTransparentEdge(src))) {
@@ -783,12 +912,13 @@ export async function runOpenAIGeneration(deps: RunDeps) {
         height: (dispW * actual.naturalHeight) / actual.naturalWidth,
         rotation: 0,
         isGenerated: true,
-        promptHint: slugFromPrompt(prompt),
+        promptHint: slugFromPrompt(effectivePrompt),
         generation: {
-          prompt,
+          prompt: effectivePrompt,
+          brief,
           provider: deps.provider || "openai",
           model:
-            j.model ||
+            outputs[index].model ||
             (deps.provider === "gemini"
               ? deps.geminiModel || "gemini"
               : deps.provider === "grok"
@@ -805,7 +935,9 @@ export async function runOpenAIGeneration(deps: RunDeps) {
       ...prev.filter((img) => img.id !== placeholderId),
       ...generated,
     ]);
-    setSelectedIds(generated.map((img) => img.id));
+    // 비교 결과 전체를 참조로 자동 선택하면 다음 수정에서 네 장이 한꺼번에
+    // 편집 입력으로 들어간다. 원하는 한 장을 사용자가 직접 고르게 한다.
+    setSelectedIds(count > 1 ? [] : generated.map((img) => img.id));
     if (deps.setViewport) {
       const left = deps.workspaceLeft || 0;
       const availableWidth =
@@ -827,7 +959,7 @@ export async function runOpenAIGeneration(deps: RunDeps) {
     }
     recordHistory({
       kind: "생성",
-      prompt,
+      prompt: effectivePrompt,
       size,
       quality,
       refs: refs.length,
@@ -836,6 +968,7 @@ export async function runOpenAIGeneration(deps: RunDeps) {
       referenceIds: selectedIds.slice(0, 16),
       resultIds: generated.map((i) => i.id),
     });
+    if (!requestError) deps.onError?.("");
     window.dispatchEvent(new Event("usage-updated"));
   } catch (error) {
     setImages((prev) => prev.filter((img) => img.id !== placeholderId));
@@ -843,9 +976,11 @@ export async function runOpenAIGeneration(deps: RunDeps) {
       toast({ title: "생성 취소했습니다" });
       return;
     }
+    const message = error instanceof Error ? error.message : "알 수 없는 오류";
+    deps.onError?.(message);
     toast({
       title: "생성 실패",
-      description: error instanceof Error ? error.message : "알 수 없는 오류",
+      description: message,
       variant: "destructive",
       action: retryAction(() => runOpenAIGeneration(deps)),
     });

@@ -17,7 +17,7 @@ export interface GenArgs {
   mask?: string;
   transparent?: boolean;
   geminiModel?: string; // 제미나이 모델 선택 (없으면 기본값)
-  openaiModel?: string; // OpenAI 생성 모델 선택 (없으면 기본값). 마스크 편집은 무시하고 2.0
+  openaiModel?: string; // OpenAI 생성 모델 선택 (없으면 기본값). 마스크 편집은 Sunburst 고정
 }
 
 export interface GenResult {
@@ -31,7 +31,7 @@ async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
 }
 
 async function runOpenAI(key: string, a: GenArgs): Promise<GenResult> {
-  // 마스크 편집(부분수정·글자수정·전개)은 실측상 2.0이 나아 고정, 생성은 고른 모델
+  // 마스크 편집(부분수정·글자수정·전개)은 Sunburst 고정, 생성은 고른 모델
   const model = a.mask
     ? OPENAI_EDIT_MODEL
     : a.openaiModel || getProvider("openai").model;

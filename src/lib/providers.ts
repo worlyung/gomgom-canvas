@@ -72,13 +72,13 @@ export const PROVIDERS: ProviderDef[] = [
   },
 ];
 
-/** OpenAI 생성 모델 (2026-09-16 실측: 2.5는 생성이 낫고 편집은 2.0이 나음 → 마스크 편집은 항상 2.0) */
+/** OpenAI 생성 모델 — 부분수정·글자수정·전개는 2.5 Sunburst로 고정 */
 export const OPENAI_MODELS = [
   { value: "gpt-image-2.5-sunburst", label: "2.5 품질 (2배 요금)" },
   { value: "gpt-image-2.5-flare", label: "2.5 빠름" },
   { value: "gpt-image-2", label: "2.0" },
 ];
-export const OPENAI_EDIT_MODEL = "gpt-image-2";
+export const OPENAI_EDIT_MODEL = "gpt-image-2.5-sunburst";
 
 /** 제미나이는 여러 이미지 모델이 있어 골라 쓴다 (실측 확인, 2026-08-20) */
 export const GEMINI_MODELS = [

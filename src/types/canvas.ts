@@ -1,6 +1,7 @@
 export interface PlacedImage {
   generation?: {
     prompt: string;
+    brief?: string;
     provider: string;
     model: string;
     size: string;

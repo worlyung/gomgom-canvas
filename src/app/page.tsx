@@ -182,6 +182,12 @@ import {
   type HistoryEntry,
 } from "@/lib/handlers/openai-handler";
 import { MaskEditor } from "@/components/mask-editor";
+import {
+  isFollowupRequest,
+  recentCanvasBrief,
+  requestedImageCount,
+  stableBriefFromPrompt,
+} from "@/lib/compare-prompts";
 import { HistoryPanel } from "@/components/history-panel";
 import { RevisionLinks } from "@/components/canvas/RevisionLinks";
 import { CompanyAssets } from "@/components/canvas/CompanyAssets";
@@ -409,6 +415,11 @@ export default function OverlayPage() {
   const [variantCount, setVariantCount] = useState(1);
   const [exactCopy, setExactCopy] = useState("");
   const [referenceKeep, setReferenceKeep] = useState("");
+  const [inheritReferencePrompt, setInheritReferencePrompt] = useState(true);
+  const [referenceMode, setReferenceMode] = useState<"style" | "content">(
+    "style",
+  );
+  const [generationError, setGenerationError] = useState("");
   const [usageOpen, setUsageOpen] = useState(false);
   const [isStyleDialogOpen, setIsStyleDialogOpen] = useState(false);
   const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
@@ -2496,14 +2507,42 @@ export default function OverlayPage() {
     if (detectedPromptSize) setImageSize(detectedPromptSize);
   }, [detectedPromptSize]);
 
+  const selectedBrief = images
+    .filter((image) => selectedIds.includes(image.id))
+    .map(
+      (image) =>
+        (image.generation?.brief
+          ? stableBriefFromPrompt(image.generation.brief) ||
+            image.generation.brief
+          : undefined) ||
+        (image.generation?.prompt
+          ? stableBriefFromPrompt(image.generation.prompt)
+          : undefined),
+    )
+    .find(Boolean);
+  const suggestedBrief =
+    referenceMode === "style"
+      ? recentCanvasBrief(images) || selectedBrief
+      : selectedBrief || recentCanvasBrief(images);
+  const showingPriorBrief = isFollowupRequest(generationSettings.prompt);
+  const promptImageCount = requestedImageCount(generationSettings.prompt);
+
   const handleRun = async () => {
+    setGenerationError("");
     const resolvedSize = imageSize;
     if (resolvedSize !== imageSize) setImageSize(resolvedSize);
+    const count =
+      providerId === "openai" ? promptImageCount || variantCount : 1;
+    if (providerId === "openai" && count !== variantCount)
+      setVariantCount(count);
     saveToHistory();
     // fal 파이프라인 대신 gpt-image-2 중계 서버 사용 (선택 이미지 = 참조, F-04)
     await runOpenAIGeneration({
       images,
       selectedIds,
+      userPrompt: generationSettings.prompt,
+      referenceMode,
+      onError: setGenerationError,
       prompt: [
         generationSettings.prompt,
         exactCopy.trim() &&
@@ -2514,7 +2553,8 @@ export default function OverlayPage() {
       ]
         .filter(Boolean)
         .join("\n\n"),
-      n: providerId === "openai" ? variantCount : 1,
+      n: count,
+      inheritReferencePrompt,
       workspaceLeft: canvasSize.width >= 768 ? 348 : 0,
       workspaceRight: canvasSize.width >= 1100 ? 280 : 0,
       workspaceBottom: canvasSize.width >= 768 ? 60 : canvasSize.height * 0.48,
@@ -4680,6 +4720,33 @@ export default function OverlayPage() {
                   )}
                 </div>
 
+                {showingPriorBrief && suggestedBrief && (
+                  <label className="block rounded-lg border border-border/60 bg-muted/50 px-3 py-2 text-xs">
+                    <span className="flex items-center gap-2 font-medium">
+                      <input
+                        type="checkbox"
+                        checked={inheritReferencePrompt}
+                        onChange={(e) =>
+                          setInheritReferencePrompt(e.target.checked)
+                        }
+                      />
+                      이전 작업 주제 이어가기
+                    </span>
+                    <span className="mt-1 block text-muted-foreground line-clamp-2">
+                      {suggestedBrief}
+                    </span>
+                  </label>
+                )}
+                {generationError && (
+                  <div
+                    role="alert"
+                    className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-900"
+                  >
+                    <strong>생성 실패</strong>
+                    <p className="mt-1 break-all">{generationError}</p>
+                  </div>
+                )}
+
                 <details className="studio-prompt-guide">
                   <summary>문구·참조 세부 지시</summary>
                   <label>
@@ -4700,9 +4767,26 @@ export default function OverlayPage() {
                       placeholder="예: 인물의 얼굴, 의상과 로고 색상"
                     />
                   </label>
+                  {images.some((image) => selectedIds.includes(image.id)) && (
+                    <label>
+                      참조 이미지 사용 방식
+                      <select
+                        aria-label="참조 이미지 사용 방식"
+                        value={referenceMode}
+                        onChange={(e) =>
+                          setReferenceMode(
+                            e.target.value as "style" | "content",
+                          )
+                        }
+                      >
+                        <option value="style">느낌만 참조 · 글자 제외</option>
+                        <option value="content">내용과 형태 유지</option>
+                      </select>
+                    </label>
+                  )}
                   <p>
-                    참조는 캔버스에서 이미지를 선택해 지정해요. 문구와 특징은
-                    생성 지시에 함께 보내며, 결과는 확인해 주세요.
+                    캔버스에서 이미지를 선택하면 참조로 씁니다. 느낌만 참조할
+                    때는 이미지 속 글자를 읽을 수 없게 낮은 해상도로 전달합니다.
                   </p>
                 </details>
                 <div
@@ -4791,7 +4875,7 @@ export default function OverlayPage() {
                     <Select value={openaiModel} onValueChange={setOpenaiModel}>
                       <SelectTrigger
                         className="h-7 w-[150px] text-xs"
-                        title="생성 모델. 부분수정·글자수정·전개는 실측상 더 나은 2.0으로 항상 처리"
+                        title="생성 모델. 부분수정·글자수정·전개는 2.5 Sunburst로 항상 처리"
                       >
                         <SelectValue />
                       </SelectTrigger>
@@ -4896,11 +4980,18 @@ export default function OverlayPage() {
                       >
                         <option value={1}>1장</option>
                         <option value={2}>2장 비교</option>
+                        <option value={3}>3장 비교</option>
                         <option value={4}>4장 비교</option>
                       </select>
                       {variantCount > 1 && (
                         <small>장수에 따라 비용이 늘어요</small>
                       )}
+                      {promptImageCount &&
+                        promptImageCount !== variantCount && (
+                          <small>
+                            입력 문구대로 실제 {promptImageCount}장을 생성해요
+                          </small>
+                        )}
                     </label>
                   )}
                   <Select value={imageQuality} onValueChange={setImageQuality}>
