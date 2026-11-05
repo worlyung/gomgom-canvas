@@ -1,8 +1,9 @@
-// gpt-image-2 생성 흐름 (fal 대체): 선택 이미지 = 참조(F-04, 최대 16장) → /api/generate → 캔버스 배치
+// GPT Image 생성 흐름 (fal 대체): 선택 이미지 = 참조(F-04, 최대 16장) → /api/generate → 캔버스 배치
 import React from "react";
 import { genFetch, isCancel } from "@/lib/generation-abort";
 import { normalizeSize, sizeForAspect } from "@/lib/image-sizes";
 import { loadOutputImage } from "@/lib/canvas-output";
+import { getProvider, OPENAI_EDIT_MODEL } from "@/lib/providers";
 import {
   comparisonPrompt,
   continueReferenceBrief,
@@ -35,6 +36,8 @@ function retryAction(fn: () => void): ToastActionElement {
 
 interface RunDeps {
   n?: number;
+  placement?: "new-row";
+  variationFeedback?: string;
   inheritReferencePrompt?: boolean;
   userPrompt?: string;
   referenceMode?: "style" | "content";
@@ -268,7 +271,7 @@ export async function runExpand(deps: {
               generation: {
                 prompt: `사이즈 전개 → ${target}`,
                 provider: "openai",
-                model: j.model || "gpt-image-2",
+                model: j.model || getProvider("openai").model,
                 size: target,
                 quality,
                 referenceIds: [image.id],
@@ -351,7 +354,7 @@ export async function runRemoveBackground(deps: {
         refs: [ref],
         transparent: true,
         provider: "openai",
-        openaiModel: "gpt-image-2.5-sunburst",
+        openaiModel: OPENAI_EDIT_MODEL,
       }),
     });
     const j = await resp.json();
@@ -368,7 +371,7 @@ export async function runRemoveBackground(deps: {
               generation: {
                 prompt: "배경 제거 (투명 PNG)",
                 provider: "openai",
-                model: j.model || "gpt-image-2",
+                model: j.model || getProvider("openai").model,
                 size,
                 quality,
                 referenceIds: [image.id],
@@ -677,7 +680,7 @@ export async function runMaskEdit(deps: {
               generation: {
                 prompt,
                 provider: "openai",
-                model: j.model || "gpt-image-2",
+                model: j.model || getProvider("openai").model,
                 size: editSize,
                 quality,
                 referenceIds: [image.id],
@@ -798,8 +801,13 @@ export async function runOpenAIGeneration(deps: RunDeps) {
   let x: number, y: number;
   if (refImages.length > 0) {
     const first = refImages[0];
-    x = first.x + first.width + 20;
-    y = first.y;
+    if (deps.placement === "new-row") {
+      x = first.x;
+      y = Math.max(...images.map((image) => image.y + image.height)) + 32;
+    } else {
+      x = first.x + first.width + 20;
+      y = first.y;
+    }
   } else {
     x =
       ((canvasSize.width + (deps.workspaceLeft || 0)) / 2 - viewport.x) /
@@ -844,7 +852,13 @@ export async function runOpenAIGeneration(deps: RunDeps) {
           body: JSON.stringify({
             prompt:
               count > 1
-                ? comparisonPrompt(generationPrompt, index)
+                ? [
+                    comparisonPrompt(generationPrompt, index),
+                    deps.variationFeedback &&
+                      `시안 방향과 충돌하면 사용자의 변경 요청을 우선하라: ${deps.variationFeedback}`,
+                  ]
+                    .filter(Boolean)
+                    .join("\n\n")
                 : generationPrompt,
             size,
             quality,
@@ -923,7 +937,7 @@ export async function runOpenAIGeneration(deps: RunDeps) {
               ? deps.geminiModel || "gemini"
               : deps.provider === "grok"
                 ? "grok-imagine-image-2.0"
-                : deps.openaiModel || "gpt-image-2"),
+                : deps.openaiModel || getProvider("openai").model),
           size,
           quality,
           referenceIds: selectedIds.slice(0, 16),

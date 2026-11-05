@@ -12,11 +12,22 @@ export function requestedImageCount(prompt: string): number | undefined {
   const match = prompt.match(
     /(?:^|\s)([234]|두|세|네)\s*(?:장|개|가지)(?:을|를)?\s*(?=(?:각각\s*)?(?:이미지|시안|포스터|뽑|만들|생성|비교))/,
   );
-  if (!match) return undefined;
-  return (
-    ({ 두: 2, 세: 3, 네: 4 } as Record<string, number>)[match[1]] ??
-    Number(match[1])
-  );
+  if (match)
+    return (
+      ({ 두: 2, 세: 3, 네: 4 } as Record<string, number>)[match[1]] ??
+      Number(match[1])
+    );
+  // 장수를 안 적어도 한 이미지로 만들지 말라거나 제목 위치별 시안을 요구하면 4장 비교로 처리한다.
+  if (
+    /(?:한|1)\s*(?:장|개)?\s*이미지(?:를|로|만)?\s*(?:하지\s*마|하지\s*말고|아니(?:고|게)|만들지\s*마)/.test(
+      prompt,
+    ) ||
+    /서로\s*다른\s*(?:제목\s*위치|구도|구성|주요\s*이미지|색감)[^.!?\n]{0,100}(?:만들|뽑|생성)/.test(
+      prompt,
+    )
+  )
+    return 4;
+  return undefined;
 }
 
 export function stripMultiImageInstructions(prompt: string): string {
@@ -27,6 +38,14 @@ export function stripMultiImageInstructions(prompt: string): string {
     )
     .replace(
       /(?:[2-4]|두|세|네)\s*(?:장|개|가지)(?:을|를)?\s*(?:각각\s*)?(?:이미지|시안|포스터)?\s*(?:뽑아?봐|뽑아?줘|만들자|만들어?봐|만들어?줘|만들라고|생성해?줘|비교해?줘)?/g,
+      " ",
+    )
+    .replace(
+      /(?:한|1)\s*(?:장|개)?\s*이미지(?:를|로|만)?\s*(?:하지\s*마|하지\s*말고|아니(?:고|게)|만들지\s*마)[.!?]?/g,
+      " ",
+    )
+    .replace(
+      /서로\s*다른\s*(?:제목\s*위치|구도|구성|주요\s*이미지|색감)[^.!?\n]{0,100}(?:만들어?\s*봐|만들어?\s*줘|뽑아?\s*봐|뽑아?\s*줘|생성해?\s*줘)[.!?]?/g,
       " ",
     )
     .replace(/[ \t]{2,}/g, " ")
@@ -102,6 +121,6 @@ export function comparisonPrompt(prompt: string, index: number): string {
   return [
     prompt,
     directions[index % directions.length],
-    "이 결과는 완성된 독립 이미지 단 한 장이다. 다른 시안과 같은 인물 자세·오브제·제목 위치·색 배치를 반복하지 마라. 한 화면에 여러 포스터나 격자·콜라주·분할 화면을 넣지 마라. 지정된 글자와 주제는 유지하라.",
+    "출력 이미지 전체를 완성된 독립 시안 한 장에 사용하라. 다른 시안과 같은 인물 자세·오브제·제목 위치·색 배치를 반복하지 마라. 한 화면에 여러 포스터나 격자·콜라주·분할 화면을 넣지 마라. 지정된 글자와 주제는 유지하라.",
   ].join("\n\n");
 }

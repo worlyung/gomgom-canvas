@@ -5,8 +5,11 @@ import path from "path";
 
 const USAGE_FILE = path.join(process.cwd(), "..", "usage.jsonl");
 
-// 예상 단가 (USD / 1M tokens) — gpt-image-1 공시가 기준 추정치. 공식 gpt-image-2 단가 확인 시 수정
-const RATE = { textIn: 5, imageIn: 10, imageOut: 40 };
+// 일반 API 호출 기준 USD / 1M tokens (OpenAI 공식 이미지 모델 요금)
+const RATE = {
+  latest: { textIn: 5, imageIn: 8, imageOut: 30 },
+  legacy: { textIn: 2.5, imageIn: 4, imageOut: 15 },
+};
 const KRW_PER_USD = 1400; // 대략 환산용
 
 function costOf(usage: any, model?: string): number {
@@ -14,13 +17,12 @@ function costOf(usage: any, model?: string): number {
   const textIn = usage.input_tokens_details?.text_tokens || 0;
   const imageIn = usage.input_tokens_details?.image_tokens || 0;
   const imageOut = usage.output_tokens || 0;
-  // gpt-image-2.5 는 공시가가 2.0의 2배 (2026-09 확인)
-  const mult = model?.includes("2.5") ? 2 : 1;
+  const rate =
+    model?.includes("2.5") || model?.includes("2.6")
+      ? RATE.latest
+      : RATE.legacy;
   return (
-    ((textIn * RATE.textIn +
-      imageIn * RATE.imageIn +
-      imageOut * RATE.imageOut) *
-      mult) /
+    (textIn * rate.textIn + imageIn * rate.imageIn + imageOut * rate.imageOut) /
     1_000_000
   );
 }

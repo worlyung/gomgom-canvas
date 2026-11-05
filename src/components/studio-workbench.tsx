@@ -25,6 +25,7 @@ import {
   resizeProject,
 } from "@/lib/studio-render";
 import { zipSync } from "fflate";
+import { OPENAI_EDIT_MODEL } from "@/lib/providers";
 type Props = {
   open: boolean;
   videoMode?: boolean;
@@ -661,7 +662,7 @@ export function StudioWorkbench({
                       size: `${Math.round(img.width / 16) * 16}x${Math.round(img.height / 16) * 16}`,
                       quality: "high",
                       provider: "openai",
-                      openaiModel: "gpt-image-2",
+                      openaiModel: OPENAI_EDIT_MODEL,
                       n: 1,
                     });
                     const src =

@@ -1,3 +1,53 @@
 // Verify default routing without another paid generation.
-const fs=require('fs'),assert=require('assert/strict'),{chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
-(async()=>{const b=await chromium.launch({channel:'msedge',headless:true});try{const p=await b.newPage({viewport:{width:1440,height:1000}});const src='data:image/png;base64,'+fs.readFileSync('C:/Users/Admin/Desktop/canvas-fix-20261023/gpt-image-2-studio-1.png').toString('base64');let calls=[];await p.route('**/api/generate',r=>{calls.push(r.request().postDataJSON());return r.fulfill({json:{images:[src]}});});await p.route('**/api/cutout',()=>{throw Error('Default must not call free cutout');});await p.goto('http://127.0.0.1:3000');await p.locator('#studio-prompt').fill('test');await p.getByRole('button',{name:'이미지 생성',exact:true}).click();await p.getByRole('button',{name:'배경 제거 · OpenAI',exact:true}).click();await p.waitForTimeout(500);assert.equal(calls.length,2);assert.equal(calls[1].provider,'openai');assert.equal(calls[1].openaiModel,'gpt-image-2.5-sunburst');assert.equal(calls[1].transparent,true);assert.equal(calls[1].refs.length,1);console.log('PASS primary background removal uses tested OpenAI model and transparent edit');}finally{await b.close();}})().catch(e=>{console.error(e);process.exitCode=1});
+const assert = require("assert/strict");
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
+const sharp = require("sharp");
+
+(async () => {
+  const browser = await chromium.launch({ channel: "msedge", headless: true });
+  try {
+    const page = await browser.newPage({
+      viewport: { width: 1440, height: 1000 },
+    });
+    const png = await sharp({
+      create: {
+        width: 256,
+        height: 256,
+        channels: 4,
+        background: "#a06442",
+      },
+    })
+      .png()
+      .toBuffer();
+    const src = `data:image/png;base64,${png.toString("base64")}`;
+    const calls = [];
+    await page.route("**/api/generate", (route) => {
+      calls.push(route.request().postDataJSON());
+      return route.fulfill({ json: { images: [src] } });
+    });
+    await page.route("**/api/cutout", () => {
+      throw Error("Default must not call free cutout");
+    });
+    await page.goto(process.env.CANVAS_TEST_URL || "http://127.0.0.1:3000");
+    await page.locator("#studio-prompt").fill("test");
+    await page
+      .getByRole("button", { name: "이미지 생성", exact: true })
+      .click();
+    await page.getByRole("button", { name: "배경 제거", exact: true }).click();
+    await page.waitForTimeout(500);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].openaiModel, "gpt-image-2.6-sunburst");
+    assert.equal(calls[1].provider, "openai");
+    assert.equal(calls[1].openaiModel, "gpt-image-2.6-sunburst");
+    assert.equal(calls[1].transparent, true);
+    assert.equal(calls[1].refs.length, 1);
+    console.log(
+      "PASS default generation and background removal use GPT Image 2.6 Sunburst",
+    );
+  } finally {
+    await browser.close();
+  }
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

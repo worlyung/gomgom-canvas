@@ -114,6 +114,7 @@ import {
   getProvider,
   GEMINI_MODELS,
   OPENAI_MODELS,
+  validOpenAIModel,
   type ProviderId,
 } from "@/lib/providers";
 import { CanvasVideo } from "@/components/canvas/CanvasVideo";
@@ -215,7 +216,7 @@ import { GithubBadge } from "@/components/canvas/GithubBadge";
 import { GenerationsIndicator } from "@/components/generations-indicator";
 
 function fitArtboard(board: Artboard, width: number, height: number) {
-  const left = width >= 768 ? 348 : 0;
+  const left = width >= 1440 ? 420 : width >= 768 ? 348 : 0;
   const right = width >= 1100 ? 280 : 0;
   const top = 160;
   const bottom = width >= 768 ? 60 : height * 0.48;
@@ -235,6 +236,7 @@ export default function OverlayPage() {
   const [notes, setNotes] = useState<PlacedNote[]>([]);
   const [videos, setVideos] = useState<PlacedVideo[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const referenceInputRef = useRef<HTMLInputElement>(null);
   const [isStorageLoaded, setIsStorageLoaded] = useState(false);
   const [visibleIndicators, setVisibleIndicators] = useState<Set<string>>(
     new Set(),
@@ -261,11 +263,11 @@ export default function OverlayPage() {
   } = useProviders();
   const provider = getProvider(providerId);
   const [geminiModel, setGeminiModel] = useState(GEMINI_MODELS[0].value);
-  // OpenAI 생성 모델 — 마지막 선택을 기억한다 (편집 기능은 서버가 2.0으로 고정)
+  // OpenAI 생성 모델 — 마지막 선택을 기억한다 (편집 기능은 서버가 2.6 Sunburst로 고정)
   const [openaiModel, setOpenaiModel] = useState(() => {
     try {
       const v = localStorage.getItem("gomgom-openai-model");
-      if (v && OPENAI_MODELS.some((m) => m.value === v)) return v;
+      if (v) return validOpenAIModel(v);
     } catch {}
     return OPENAI_MODELS[0].value;
   });
@@ -298,7 +300,8 @@ export default function OverlayPage() {
             setProviderId(data.settings.provider as ProviderId);
           if (data.settings.provider === "gemini")
             setGeminiModel(data.settings.model);
-          else if (data.settings.model) setOpenaiModel(data.settings.model);
+          else if (data.settings.model)
+            setOpenaiModel(validOpenAIModel(data.settings.model));
         }
       })
       .catch(() =>
@@ -420,6 +423,15 @@ export default function OverlayPage() {
     "style",
   );
   const [generationError, setGenerationError] = useState("");
+  const [variationSourceId, setVariationSourceId] = useState<string | null>(
+    null,
+  );
+  const [variationFeedback, setVariationFeedback] = useState("");
+  const [variationMode, setVariationMode] = useState<"style" | "content">(
+    "style",
+  );
+  const [variationError, setVariationError] = useState("");
+  const [variationBusy, setVariationBusy] = useState(false);
   const [usageOpen, setUsageOpen] = useState(false);
   const [isStyleDialogOpen, setIsStyleDialogOpen] = useState(false);
   const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
@@ -1588,6 +1600,7 @@ export default function OverlayPage() {
   const handleFileUpload = (
     files: FileList | null,
     position?: { x: number; y: number },
+    selectAsReference = false,
   ) => {
     if (!files) return;
 
@@ -1679,6 +1692,7 @@ export default function OverlayPage() {
                 rotation: 0,
               },
             ]);
+            if (selectAsReference) setSelectedIds((prev) => [...prev, id]);
           };
           img.src = e.target?.result as string;
         };
@@ -2253,7 +2267,7 @@ export default function OverlayPage() {
         if (data.extras.settings.provider === "gemini")
           setGeminiModel(data.extras.settings.model);
         else if (data.extras.settings.model)
-          setOpenaiModel(data.extras.settings.model);
+          setOpenaiModel(validOpenAIModel(data.extras.settings.model));
       } else setStudioExtras(emptyExtras());
       setTexts(data.texts);
       setShapes(data.shapes);
@@ -2555,7 +2569,8 @@ export default function OverlayPage() {
         .join("\n\n"),
       n: count,
       inheritReferencePrompt,
-      workspaceLeft: canvasSize.width >= 768 ? 348 : 0,
+      workspaceLeft:
+        canvasSize.width >= 1440 ? 420 : canvasSize.width >= 768 ? 348 : 0,
       workspaceRight: canvasSize.width >= 1100 ? 280 : 0,
       workspaceBottom: canvasSize.width >= 768 ? 60 : canvasSize.height * 0.48,
       setViewport,
@@ -2572,6 +2587,72 @@ export default function OverlayPage() {
       setIsGenerating,
       toast,
     });
+  };
+
+  const variationSource = images.find(
+    (image) => image.id === variationSourceId,
+  );
+
+  const openVariation = () => {
+    const source = images.find((image) => image.id === selectedIds[0]);
+    if (!source?.generation?.prompt || source.src === generationPlaceholderSrc)
+      return;
+    setVariationSourceId(source.id);
+    setVariationFeedback("");
+    setVariationMode("style");
+    setVariationError("");
+  };
+
+  const runVariation = async () => {
+    const source = images.find((image) => image.id === variationSourceId);
+    if (
+      !source?.generation?.prompt ||
+      !variationFeedback.trim() ||
+      variationBusy
+    )
+      return;
+    setVariationError("");
+    setVariationBusy(true);
+    let failed = false;
+    saveToHistory();
+    try {
+      await runOpenAIGeneration({
+        images,
+        selectedIds: [source.id],
+        userPrompt: source.generation.prompt,
+        prompt: `${source.generation.prompt}\n\n선택한 시안에서 바꿀 점: ${variationFeedback.trim()}`,
+        referenceMode: variationMode,
+        variationFeedback: variationFeedback.trim(),
+        inheritReferencePrompt: false,
+        placement: "new-row",
+        n: 4,
+        workspaceLeft:
+          canvasSize.width >= 1440 ? 420 : canvasSize.width >= 768 ? 348 : 0,
+        workspaceRight: canvasSize.width >= 1100 ? 280 : 0,
+        workspaceBottom:
+          canvasSize.width >= 768 ? 60 : canvasSize.height * 0.48,
+        setViewport,
+        size: source.generation.size || imageSize,
+        quality: imageQuality,
+        provider: "openai",
+        openaiModel,
+        canvasSize,
+        viewport,
+        setImages,
+        setSelectedIds,
+        setIsGenerating,
+        toast,
+        onError: (message) => {
+          if (message) {
+            failed = true;
+            setVariationError(message);
+          }
+        },
+      });
+      if (!failed) setVariationSourceId(null);
+    } finally {
+      setVariationBusy(false);
+    }
   };
 
   const handleDelete = () => {
@@ -4647,7 +4728,7 @@ export default function OverlayPage() {
                 >
                   어떤 이미지를 만들까요?
                 </label>
-                <div className="relative">
+                <div className="space-y-2">
                   <Textarea
                     id="studio-prompt"
                     disabled={!extrasLoaded}
@@ -4661,7 +4742,7 @@ export default function OverlayPage() {
                     // OS 분기를 아예 안 쓴다 — 서버는 브라우저의 OS를 모르니 ⌘로 렌더하고
                     // 윈도우 브라우저는 Ctrl로 렌더해서 하이드레이션이 깨졌다. 둘 다 적으면 안 갈린다.
                     placeholder="프롬프트를 입력하세요… (Ctrl/⌘+Enter 실행)"
-                    className="w-full h-36 resize-none rounded-xl border p-3 pr-14"
+                    className="studio-prompt-input w-full min-h-[260px] resize-y rounded-xl border p-3"
                     style={{ fontSize: "16px" }}
                     onKeyDown={(e) => {
                       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -4673,8 +4754,62 @@ export default function OverlayPage() {
                     }}
                   />
 
-                  {selectedIds.length > 0 && (
-                    <div className="absolute top-1 right-2 flex items-center justify-end">
+                  <div className="studio-reference-controls">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-semibold">참고 이미지</span>
+                      <input
+                        ref={referenceInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="sr-only"
+                        aria-label="참고 이미지 파일 선택"
+                        onChange={(event) => {
+                          if (!event.currentTarget.files?.length) return;
+                          setSelectedIds([]);
+                          handleFileUpload(
+                            event.currentTarget.files,
+                            undefined,
+                            true,
+                          );
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={isGenerating}
+                        onClick={() => referenceInputRef.current?.click()}
+                      >
+                        + 이미지 추가
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      이미지를 추가하거나 캔버스에서 한 장을 선택하면
+                      참고합니다.
+                    </p>
+                  </div>
+
+                  {images.some((image) => selectedIds.includes(image.id)) && (
+                    <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-3 py-2 text-xs">
+                      <span>
+                        참조 이미지{" "}
+                        {
+                          selectedIds.filter((id) =>
+                            images.some((image) => image.id === id),
+                          ).length
+                        }
+                        장 선택됨
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => setSelectedIds([])}
+                      >
+                        참조 해제
+                      </Button>
                       <div className="relative h-12 w-20">
                         {selectedIds.slice(0, 3).map((id, index) => {
                           const image = images.find((img) => img.id === id);
@@ -4789,150 +4924,169 @@ export default function OverlayPage() {
                     때는 이미지 속 글자를 읽을 수 없게 낮은 해상도로 전달합니다.
                   </p>
                 </details>
-                <div
-                  className="px-1 pb-2 text-xs text-muted-foreground"
-                  role="status"
-                >
-                  출력 크기 · {imageSize.replace("x", " × ")}px
-                  {artboard &&
-                    Math.abs(
-                      artboard.width / artboard.height -
-                        Number(imageSize.split("x")[0]) /
-                          Number(imageSize.split("x")[1]),
-                    ) > 0.02 && (
-                      <span className="ml-2 text-amber-700">
-                        작업판과 비율이 달라요 · 적용할 때 맞춤 방식을
-                        선택하세요
-                      </span>
-                    )}
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5 px-1 pb-1">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="h-7 text-xs"
-                    disabled={isEnhancing || !generationSettings.prompt.trim()}
-                    onClick={enhancePrompt}
-                    title="대충 쓴 문장을 구체적인 묘사로 바꿔줍니다"
+                <div className="studio-generation-controls">
+                  <div
+                    className="px-1 text-xs text-muted-foreground"
+                    role="status"
                   >
-                    {isEnhancing ? "다듬는 중…" : "✨ 프롬프트 다듬기"}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => {
-                      setCampaignRequest(generationSettings.prompt);
-                      setCampaignOpen(true);
-                    }}
-                    title="한 줄 요청을 로고·포스터·배너 등으로 쪼개 한 번에 만듭니다"
-                  >
-                    🎯 캠페인 한 번에
-                  </Button>
-                  {promptBeforeEnhance !== null && (
+                    출력 크기 · {imageSize.replace("x", " × ")}px
+                    {artboard &&
+                      Math.abs(
+                        artboard.width / artboard.height -
+                          Number(imageSize.split("x")[0]) /
+                            Number(imageSize.split("x")[1]),
+                      ) > 0.02 && (
+                        <span className="ml-2 text-amber-700">
+                          작업판과 비율이 달라요 · 적용할 때 맞춤 방식을
+                          선택하세요
+                        </span>
+                      )}
+                  </div>
+                  <div className="studio-control-row flex-wrap">
                     <Button
-                      variant="ghost"
+                      variant="secondary"
+                      size="sm"
+                      className="h-7 text-xs"
+                      disabled={
+                        isEnhancing || !generationSettings.prompt.trim()
+                      }
+                      onClick={enhancePrompt}
+                      title="대충 쓴 문장을 구체적인 묘사로 바꿔줍니다"
+                    >
+                      {isEnhancing ? "다듬는 중…" : "✨ 프롬프트 다듬기"}
+                    </Button>
+                    <Button
+                      variant="secondary"
                       size="sm"
                       className="h-7 text-xs"
                       onClick={() => {
-                        setGenerationSettings((prev) => ({
-                          ...prev,
-                          prompt: promptBeforeEnhance,
-                        }));
-                        setPromptBeforeEnhance(null);
+                        setCampaignRequest(generationSettings.prompt);
+                        setCampaignOpen(true);
                       }}
+                      title="한 줄 요청을 로고·포스터·배너 등으로 쪼개 한 번에 만듭니다"
                     >
-                      ↩ 되돌리기
+                      🎯 캠페인 한 번에
                     </Button>
-                  )}
-                  <Select
-                    value={providerId}
-                    onValueChange={(v) => setProviderId(v as ProviderId)}
-                  >
-                    <SelectTrigger className="h-7 w-[104px] text-xs">
-                      <SelectValue placeholder="OpenAI" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {providerList.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          <span className="flex items-center gap-1.5">
-                            <span
-                              className={
-                                p.configured
-                                  ? "text-green-600"
-                                  : "text-muted-foreground"
-                              }
-                            >
-                              ●
-                            </span>
-                            {p.label.split(" (")[0]}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {providerId === "openai" && (
-                    <Select value={openaiModel} onValueChange={setOpenaiModel}>
-                      <SelectTrigger
-                        className="h-7 w-[150px] text-xs"
-                        title="생성 모델. 부분수정·글자수정·전개는 2.5 Sunburst로 항상 처리"
+                    {promptBeforeEnhance !== null && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          setGenerationSettings((prev) => ({
+                            ...prev,
+                            prompt: promptBeforeEnhance,
+                          }));
+                          setPromptBeforeEnhance(null);
+                        }}
                       >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {OPENAI_MODELS.map((m) => (
-                          <SelectItem key={m.value} value={m.value}>
-                            {m.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                  {providerId === "gemini" && (
-                    <Select value={geminiModel} onValueChange={setGeminiModel}>
-                      <SelectTrigger className="h-7 w-[150px] text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {GEMINI_MODELS.map((m) => (
-                          <SelectItem key={m.value} value={m.value}>
-                            {m.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
+                        ↩ 되돌리기
+                      </Button>
+                    )}
+                  </div>
+                  <div className="studio-control-group">
+                    <span className="studio-control-heading">생성 모델</span>
+                    <div className="studio-control-row">
+                      <Select
+                        value={providerId}
+                        onValueChange={(v) => setProviderId(v as ProviderId)}
+                      >
+                        <SelectTrigger className="h-7 w-[104px] text-xs">
+                          <SelectValue placeholder="OpenAI" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {providerList.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              <span className="flex items-center gap-1.5">
+                                <span
+                                  className={
+                                    p.configured
+                                      ? "text-green-600"
+                                      : "text-muted-foreground"
+                                  }
+                                >
+                                  ●
+                                </span>
+                                {p.label.split(" (")[0]}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {providerId === "openai" && (
+                        <Select
+                          value={openaiModel}
+                          onValueChange={setOpenaiModel}
+                        >
+                          <SelectTrigger
+                            className="h-7 w-[150px] text-xs"
+                            title="생성 모델. 부분수정·글자수정·전개는 2.6 Sunburst로 항상 처리"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {OPENAI_MODELS.map((m) => (
+                              <SelectItem key={m.value} value={m.value}>
+                                {m.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      {providerId === "gemini" && (
+                        <Select
+                          value={geminiModel}
+                          onValueChange={setGeminiModel}
+                        >
+                          <SelectTrigger className="h-7 w-[150px] text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {GEMINI_MODELS.map((m) => (
+                              <SelectItem key={m.value} value={m.value}>
+                                {m.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  </div>
                   <fieldset
-                    className="flex flex-wrap gap-1 w-full"
+                    className="studio-control-group w-full"
                     aria-label="이미지 비율"
                   >
-                    <legend className="text-xs mb-1">비율</legend>
-                    {[
-                      ["정사각", "1024x1024"],
-                      ["가로 16:9", "1536x864"],
-                      ["세로 9:16", "864x1536"],
-                      ["가로 3:2", "1536x1024"],
-                      ["세로 2:3", "1024x1536"],
-                      ["현수막 3:1", "2880x960"],
-                      ["A4 세로", "1760x2480"],
-                      ["A4 가로", "2480x1760"],
-                    ].map(([label, value]) => {
-                      const [w, h] = imageSize.split("x").map(Number),
-                        [pw, ph] = value.split("x").map(Number);
-                      return (
-                        <button
-                          key={value}
-                          type="button"
-                          className="rounded border px-2 py-1 text-xs aria-pressed:bg-primary aria-pressed:text-primary-foreground"
-                          aria-pressed={Math.abs(w / h - pw / ph) < 0.02}
-                          onClick={() => setImageSize(value)}
-                        >
-                          {label}
-                        </button>
-                      );
-                    })}
+                    <legend className="studio-control-heading mb-2">
+                      이미지 비율
+                    </legend>
+                    <div className="studio-ratio-grid">
+                      {[
+                        ["정사각", "1024x1024"],
+                        ["가로 16:9", "1536x864"],
+                        ["세로 9:16", "864x1536"],
+                        ["가로 3:2", "1536x1024"],
+                        ["세로 2:3", "1024x1536"],
+                        ["현수막 3:1", "2880x960"],
+                        ["A4 세로", "1760x2480"],
+                        ["A4 가로", "2480x1760"],
+                      ].map(([label, value]) => {
+                        const [w, h] = imageSize.split("x").map(Number),
+                          [pw, ph] = value.split("x").map(Number);
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            className="rounded border px-2 py-1 text-xs aria-pressed:bg-primary aria-pressed:text-primary-foreground"
+                            aria-pressed={Math.abs(w / h - pw / ph) < 0.02}
+                            onClick={() => setImageSize(value)}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </fieldset>
-                  <details className="w-full">
+                  <details className="studio-control-group w-full">
                     <summary className="cursor-pointer text-xs py-2">
                       세부 설정 · 해상도
                     </summary>
@@ -4969,7 +5123,7 @@ export default function OverlayPage() {
                     </div>
                   </details>
                   {providerId === "openai" && (
-                    <label className="studio-variants">
+                    <label className="studio-variants studio-control-group">
                       시안 수
                       <select
                         aria-label="시안 수"
@@ -4994,38 +5148,46 @@ export default function OverlayPage() {
                         )}
                     </label>
                   )}
-                  <Select value={imageQuality} onValueChange={setImageQuality}>
-                    <SelectTrigger className="h-7 w-[86px] text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="high">고품질</SelectItem>
-                      <SelectItem value="medium">중간</SelectItem>
-                      <SelectItem value="low">저품질</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    variant={transparentBg ? "secondary" : "ghost"}
-                    size="sm"
-                    className={cn(
-                      "h-7 text-xs",
-                      transparentBg &&
-                        "ring-1 ring-blue-400/60 text-blue-600 dark:text-blue-400",
-                    )}
-                    disabled={!provider.caps.transparent}
-                    onClick={() => setTransparentBg((v) => !v)}
-                    title={
-                      provider.caps.transparent
-                        ? "배경 없이 요소만 그린 PNG로 생성 (로고·캐릭터·오려 쓸 요소용)"
-                        : `${provider.label}는 투명 배경을 지원하지 않습니다`
-                    }
-                  >
-                    {transparentBg ? "☑ 투명 배경" : "☐ 투명 배경"}
-                  </Button>
+                  <div className="studio-control-group">
+                    <span className="studio-control-heading">품질과 배경</span>
+                    <div className="studio-control-row">
+                      <Select
+                        value={imageQuality}
+                        onValueChange={setImageQuality}
+                      >
+                        <SelectTrigger className="w-[130px] text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="high">고품질</SelectItem>
+                          <SelectItem value="medium">중간</SelectItem>
+                          <SelectItem value="low">저품질</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant={transparentBg ? "secondary" : "ghost"}
+                        size="sm"
+                        className={cn(
+                          "text-xs",
+                          transparentBg &&
+                            "ring-1 ring-blue-400/60 text-blue-600 dark:text-blue-400",
+                        )}
+                        disabled={!provider.caps.transparent}
+                        onClick={() => setTransparentBg((v) => !v)}
+                        title={
+                          provider.caps.transparent
+                            ? "배경 없이 요소만 그린 PNG로 생성 (로고·캐릭터·오려 쓸 요소용)"
+                            : `${provider.label}는 투명 배경을 지원하지 않습니다`
+                        }
+                      >
+                        {transparentBg ? "☑ 투명 배경" : "☐ 투명 배경"}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Style dropdown and Run button */}
-                <div className="flex items-center justify-between gap-2">
+                <div className="studio-composer-actions flex items-center justify-between gap-2">
                   {/* Style selector button */}
                   <Button
                     variant="secondary"
@@ -5296,7 +5458,7 @@ export default function OverlayPage() {
                 if (p.extras.settings.provider === "gemini")
                   setGeminiModel(p.extras.settings.model);
                 else if (p.extras.settings.model)
-                  setOpenaiModel(p.extras.settings.model);
+                  setOpenaiModel(validOpenAIModel(p.extras.settings.model));
               }}
             />
             <img
@@ -5379,6 +5541,18 @@ export default function OverlayPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
+                    {images.find((image) => image.id === selectedIds[0])
+                      ?.generation?.prompt && (
+                      <>
+                        <DropdownMenuItem
+                          onClick={openVariation}
+                          disabled={isGenerating}
+                        >
+                          ✨ 이 시안으로 4장 변형
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                      </>
+                    )}
                     {(texts.length > 0 || shapes.length > 0) && (
                       <>
                         <DropdownMenuItem onClick={bakeTextIntoImage}>
@@ -5729,39 +5903,58 @@ export default function OverlayPage() {
             ) && (
               <div className="studio-properties">
                 <h2>선택한 이미지</h2>
-                <p>고칠 부분과 출력 방식을 선택하세요.</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openMaskEdit("brush")}
-                  >
-                    부분 수정
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openMaskEdit("text")}
-                  >
-                    글자 수정
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isGenerating}
-                    title="OpenAI로 배경을 제거해요. API 비용이 발생하며 결과는 원본 옆에 추가돼요."
-                    onClick={removeBgForSelected}
-                  >
-                    배경 제거 · OpenAI
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => runExpandFor("1536x864")}
-                  >
-                    가로로 확장
-                  </Button>
+                <p>이 이미지로 새 시안을 만들거나 편집하세요.</p>
+                {images.find((image) => image.id === selectedIds[0])?.generation
+                  ?.prompt && (
+                  <div className="studio-properties-section">
+                    <h3>새 시안 만들기</h3>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={openVariation}
+                      disabled={isGenerating}
+                    >
+                      이 시안으로 4장 변형
+                    </Button>
+                  </div>
+                )}
+                <div className="studio-properties-section">
+                  <h3>이미지 편집</h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openMaskEdit("brush")}
+                    >
+                      부분 수정
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openMaskEdit("text")}
+                    >
+                      글자 수정
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isGenerating}
+                      title="OpenAI로 배경을 제거해요. API 비용이 발생하며 결과는 원본 옆에 추가돼요."
+                      onClick={removeBgForSelected}
+                    >
+                      배경 제거
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => runExpandFor("1536x864")}
+                    >
+                      가로로 확장
+                    </Button>
+                  </div>
                 </div>
+                <h3 className="studio-properties-section">저장·작업판</h3>
                 <Button
                   variant="outline"
                   size="sm"
@@ -6019,6 +6212,88 @@ export default function OverlayPage() {
               onClose={() => setHistoryOpen(false)}
             />
           )}
+          <Dialog
+            open={!!variationSourceId}
+            onOpenChange={(open) => {
+              if (!open && !variationBusy) setVariationSourceId(null);
+            }}
+          >
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>이 시안으로 4장 변형</DialogTitle>
+                <DialogDescription>
+                  선택한 포스터의 원래 행사 정보와 요청을 이어받습니다.
+                </DialogDescription>
+              </DialogHeader>
+              {variationSource && (
+                <div className="flex items-start gap-3 rounded-lg border p-3">
+                  <img
+                    src={variationSource.src}
+                    alt="선택한 원본 시안"
+                    className="h-28 w-20 shrink-0 rounded object-contain"
+                  />
+                  <p className="max-h-28 overflow-y-auto text-xs text-muted-foreground">
+                    {variationSource.generation?.brief ||
+                      variationSource.generation?.prompt}
+                  </p>
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label htmlFor="variation-feedback">이 시안에서 바꿀 점</Label>
+                <Textarea
+                  id="variation-feedback"
+                  value={variationFeedback}
+                  onChange={(event) => setVariationFeedback(event.target.value)}
+                  placeholder="예: 제목을 아래로 옮기고, 부채 대신 무용수 한 명을 크게 보여줘"
+                  rows={3}
+                  disabled={variationBusy}
+                />
+              </div>
+              <fieldset className="space-y-2 text-sm" disabled={variationBusy}>
+                <legend className="mb-2 font-medium">
+                  원본을 이어받는 방식
+                </legend>
+                <label className="flex items-start gap-2">
+                  <input
+                    type="radio"
+                    name="variation-mode"
+                    value="style"
+                    checked={variationMode === "style"}
+                    onChange={() => setVariationMode("style")}
+                  />
+                  <span>분위기만 유지 · 제목 위치와 구도는 다양하게</span>
+                </label>
+                <label className="flex items-start gap-2">
+                  <input
+                    type="radio"
+                    name="variation-mode"
+                    value="content"
+                    checked={variationMode === "content"}
+                    onChange={() => setVariationMode("content")}
+                  />
+                  <span>현재 구성을 유지 · 가까운 변형 만들기</span>
+                </label>
+              </fieldset>
+              {variationError && (
+                <p role="alert" className="text-sm text-destructive">
+                  {variationError}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                4장을 각각 생성하므로 OpenAI API 요금이 4건 발생합니다.
+              </p>
+              <Button
+                variant="primary"
+                className="w-full bg-emerald-700 text-white hover:bg-emerald-600"
+                onClick={runVariation}
+                disabled={
+                  !variationFeedback.trim() || variationBusy || isGenerating
+                }
+              >
+                {variationBusy ? "4장 만드는 중…" : "4장 생성"}
+              </Button>
+            </DialogContent>
+          </Dialog>
           <Dialog open={boardOpen} onOpenChange={setBoardOpen}>
             <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
               <DialogHeader>

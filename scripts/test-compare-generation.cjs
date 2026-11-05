@@ -55,7 +55,7 @@ const sharp = require("sharp");
           request.prompt.includes("2026 서울 한국춤 페스티벌") &&
           request.prompt.includes("2026.12.7~12.8") &&
           request.prompt.includes("서울남산국악당·남산골한옥마을") &&
-          request.prompt.includes("독립 이미지 단 한 장") &&
+          request.prompt.includes("독립 시안 한 장") &&
           !request.prompt.includes("4장을 각각 만들자") &&
           !request.prompt.includes("4개 이미지를 만들라고"),
       ),
@@ -175,6 +175,51 @@ const sharp = require("sharp");
     ).metadata();
     assert.equal(contentMeta.width, 120);
     assert(!contentRef.prompt.includes("참조 이미지의 글자·숫자"));
+
+    const implicitPage = await browser.newPage();
+    const implicitRequests = [];
+    await implicitPage.route("**/api/generate", (route) => {
+      implicitRequests.push(route.request().postDataJSON());
+      return route.fulfill({ json: { images: [png], model: "mock" } });
+    });
+    await implicitPage.goto(
+      process.env.CANVAS_TEST_URL || "http://127.0.0.1:3011/",
+    );
+    await implicitPage
+      .locator("#studio-prompt")
+      .fill(
+        "2026 서울 한국춤 페스티벌을 큰 글자로 넣기. 작은 글씨로 일시 2026.12.7~12.8 / 장소 서울남산국악당·남산골한옥마을 표기. 전통과 컨템포러리를 잇는 우아하고 역동적인 분위기. 한옥 처마, 부채, 북, 학 등 한국 전통춤 관련 오브제와 무용수 실루엣을 유려한 붓터치로 표현. 앙리 마티스의 느낌처럼 단순하고 깔끔한 형상, 넓은 여백. 인쇄용 세로 포스터. 서로 다른 제목 위치, 구성, 주요 이미지와 색감으로 만들어봐. 한 이미지를 하지 마.",
+      );
+    assert.equal(
+      await implicitPage.getByLabel("시안 수", { exact: true }).inputValue(),
+      "1",
+    );
+    await implicitPage
+      .getByRole("button", { name: "이미지 생성", exact: true })
+      .click();
+    await implicitPage.waitForFunction(
+      () =>
+        JSON.parse(
+          localStorage.getItem("canvas-state") || "{}",
+        ).elements?.filter((item) => item.type === "image").length === 4,
+    );
+    assert.equal(implicitRequests.length, 4);
+    assert.equal(
+      new Set(implicitRequests.map((request) => request.prompt)).size,
+      4,
+    );
+    assert(
+      implicitRequests.every(
+        (request) =>
+          request.n === 1 &&
+          request.prompt.includes("2026 서울 한국춤 페스티벌") &&
+          request.prompt.includes("2026.12.7~12.8") &&
+          request.prompt.includes("서울남산국악당·남산골한옥마을") &&
+          request.prompt.includes("한 화면에 여러 포스터나 격자") &&
+          !request.prompt.includes("서로 다른 제목 위치") &&
+          !request.prompt.includes("한 이미지를 하지 마"),
+      ),
+    );
 
     const emptyPage = await browser.newPage();
     let unexpectedRequest = false;

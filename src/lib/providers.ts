@@ -28,7 +28,7 @@ export const PROVIDERS: ProviderDef[] = [
     envKey: "OPENAI_API_KEY_COMPANY",
     keyHint: "sk-...",
     docsUrl: "https://platform.openai.com/api-keys",
-    model: "gpt-image-2.5-sunburst",
+    model: "gpt-image-2.6-sunburst",
     caps: {
       generate: true,
       reference: true,
@@ -72,13 +72,18 @@ export const PROVIDERS: ProviderDef[] = [
   },
 ];
 
-/** OpenAI 생성 모델 — 부분수정·글자수정·전개는 2.5 Sunburst로 고정 */
+/** OpenAI 생성 모델 — 부분수정·글자수정·전개는 2.6 Sunburst로 고정 */
 export const OPENAI_MODELS = [
-  { value: "gpt-image-2.5-sunburst", label: "2.5 품질 (2배 요금)" },
-  { value: "gpt-image-2.5-flare", label: "2.5 빠름" },
+  { value: "gpt-image-2.6-sunburst", label: "2.6 품질 (2배 요금)" },
+  { value: "gpt-image-2.6-flare", label: "2.6 빠름 (2배 요금)" },
   { value: "gpt-image-2", label: "2.0" },
 ];
-export const OPENAI_EDIT_MODEL = "gpt-image-2.5-sunburst";
+export const OPENAI_EDIT_MODEL = "gpt-image-2.6-sunburst";
+
+export const validOpenAIModel = (model?: string): string =>
+  OPENAI_MODELS.some((option) => option.value === model)
+    ? model!
+    : OPENAI_MODELS[0].value;
 
 /** 제미나이는 여러 이미지 모델이 있어 골라 쓴다 (실측 확인, 2026-08-20) */
 export const GEMINI_MODELS = [
