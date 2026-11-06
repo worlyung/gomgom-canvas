@@ -18,6 +18,7 @@
   let emdState = "none"; // none | loading | ready
   let index = [];
   let lastScene = null;
+  let chartPreviewRun = 0;
   const V = window.KRMapViewport;
   let viewBox = null, viewKey = "", suppressMapClickUntil=0;
   function openDokdo() {
@@ -232,6 +233,7 @@
     renderInfo(scene);
     if (scene.warning) $("meta").innerHTML += ` · <span class="warn">${scene.warning}</span>`;
     renderDataReport();
+    renderChartPreview(scene);
     if (advancedUI) advancedUI.refresh();
     recordHistory();
     renderLabelPick(scene);
@@ -240,6 +242,40 @@
       const h = S.mode === "around" ? `#${S.target.lv}-${S.target.id}` : `#${S.mode}`;
       history.replaceState(null, "", h);
     } catch (e) { /* 미리보기 환경 */ }
+  }
+
+  function chartTypes(state) {
+    const mode = state.charts || "none";
+    return window.KRMapCharts.parseCharts(mode === "both" ? true : mode === "none" ? false : mode);
+  }
+  async function chartBoard(scene, state = S, context = ctx) {
+    const types = chartTypes(state);
+    if (!types.length) return null;
+    const { specs, theme } = window.KRMapCharts.chartSpecs(D, state, context, types, { bg: scene.bg || "#FFFFFF" });
+    return window.KRMapCharts.composeBoard(R.toSVG(scene), scene, specs, theme);
+  }
+  function renderChartPreview(scene) {
+    const run = ++chartPreviewRun;
+    const preview = $("chartPreview");
+    const active = !!chartTypes(S).length;
+    $("charts").value = S.charts || "none";
+    preview.hidden = !active;
+    $("slide").classList.toggle("with-charts", active);
+    const dr = St.dataResult(D, S, ctx);
+    const usable = dr && dr.kind === "num" && dr.nums && Object.keys(dr.nums).filter((key) => Number.isFinite(dr.nums[key])).length >= 2;
+    $("chartHelp").textContent = usable
+      ? "지도에 칠한 숫자로 차트를 만듭니다. SVG·PNG·PPTX와 캔버스에 넣기에도 함께 반영돼요."
+      : "숫자 값이 있는 지역 두 곳 이상을 색칠하면 차트를 만들 수 있어요.";
+    if (!active) return;
+    if (!usable) { preview.textContent = $("chartHelp").textContent; return; }
+    preview.textContent = "차트를 만드는 중…";
+    Promise.resolve().then(() => chartBoard(scene)).then((board) => {
+      if (run !== chartPreviewRun) return;
+      preview.innerHTML = board.charts.map((chart) => chart.svg).join("");
+    }).catch((error) => {
+      if (run !== chartPreviewRun) return;
+      preview.textContent = error.message;
+    });
   }
 
   const ver = () => { const m = D.meta.version; return `${m.slice(0, 4)}.${m.slice(4, 6)}.${m.slice(6)}`; };
@@ -1042,6 +1078,7 @@
     $("bubbleScale").addEventListener("input", (e) => { S.data.bubbleScale = +e.target.value; clearTimeout(bindControls._b); bindControls._b = setTimeout(render, 50); });
     $("dataMethod").onchange = (e) => { S.data.method = e.target.value; render(); };
     $("dataValues").onchange = (e) => { S.data.showValues = e.target.checked; render(); };
+    $("charts").onchange = (e) => { S.charts = e.target.value; render(); };
     const GROUP_COLORS = ["#EF6B4C", "#14A37F", "#F2B33D", "#8B5CF6", "#3361E0", "#E0559A", "#4BB3D9", "#8C6D46"];
     $("groupAdd").onclick = () => {
       const id = "g" + Date.now().toString(36);
@@ -1171,11 +1208,13 @@
       const states = deck.map((it) => St.mergeState(St.defaultState(), it.state));
       if (states.some((st) => St.needsEmd(st))) await waitEmd();
       await loadPptx();
-      const scenes = [], notes = [], warnings = [];
+      const scenes = [], notes = [], warnings = [], boards = [];
       for (const S2 of states) {
         R.useSido17(D, S2.sido17);
         const c2 = St.createContext({ stats: window.KRMAP.stats || null, bigText: ctx.bigText, emdReady: emdState === "ready" });
         scenes.push(St.buildScene(D, S2, c2, 1600));
+        const slideBoard = await chartBoard(scenes[scenes.length - 1], S2, c2);
+        boards.push(await pptxBoard(slideBoard));
         const dr = St.dataResult(D, S2, c2);
         const problems = [];
         if (dr && dr.ambiguous.length) problems.push(`같은 이름이 여러 곳: ${dr.ambiguous.join(", ")} — 시도를 붙여 주세요`);
@@ -1189,7 +1228,7 @@
       }
       const backgrounds = [];
       for (const sc of scenes) backgrounds.push(await backdropImage(sc));
-      const pptx = window.KRMapPptx.buildPptx(window.PptxGenJS, scenes, { footnote: notes, title: "지도 묶음", backgrounds });
+      const pptx = window.KRMapPptx.buildPptx(window.PptxGenJS, scenes, { footnote: notes, title: "지도 묶음", backgrounds, boards });
       const blob = await pptx.write({ outputType: "blob" });
       await saveFile(`지도묶음_${scenes.length}장.pptx`, blob, "application/vnd.openxmlformats-officedocument.presentationml.presentation");
     } catch (e) {
@@ -1366,9 +1405,13 @@
     if (needsEmd() && emdState !== "ready") { toast("읍면동을 불러오는 중입니다"); return null; }
     try { return St.buildScene(D, S, ctx, 1600); } catch(e) {toast(e.message);return null;}
   }
-  function exportSVG() {
+  async function exportSVG() {
     const scene = D && freshScene();
-    if (scene) saveFile(baseName(scene) + ".svg", R.toSVG(scene), "image/svg+xml");
+    if (!scene) return;
+    try {
+      const board = await chartBoard(scene);
+      await saveFile(baseName(scene) + ".svg", board ? board.svg : R.toSVG(scene), "image/svg+xml");
+    } catch (e) { toast(e.message); }
   }
   // 그림으로 바꿀 때는 SVG 가 페이지 글꼴을 못 쓰므로 프리텐다드를 SVG 안에 넣는다 (못 읽으면 컴퓨터 글꼴로)
   let fontCss = null;
@@ -1382,43 +1425,67 @@
       .then((list) => list.join(""), () => "");
     return fontCss;
   }
-  async function sceneToPng(scene, scale) {
+  async function svgToPng(svg, width, height, scale) {
     const css = await embeddedFonts();
-    let svg = R.toSVG(scene);
     if (css) svg = svg.replace(/^(<svg[^>]*>)/, `$1<defs><style>${css}</style></defs>`);
     return new Promise((ok, fail) => {
       const img = new Image();
       const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
       img.onload = () => {
         const c = document.createElement("canvas");
-        c.width = Math.round(scene.width * scale);
-        c.height = Math.round(scene.height * scale);
+        c.width = Math.round(width * scale);
+        c.height = Math.round(height * scale);
         c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
         URL.revokeObjectURL(url);
         c.toBlob((b) => (b ? ok(b) : fail(new Error("png"))), "image/png");
       };
-      img.onerror = fail;
+      img.onerror = () => { URL.revokeObjectURL(url); fail(new Error("PNG 그림을 읽지 못했습니다")); };
       img.src = url;
     });
+  }
+  async function sceneToPng(scene, scale, board) {
+    return svgToPng(board ? board.svg : R.toSVG(scene), board ? board.width : scene.width, board ? board.height : scene.height, scale);
+  }
+  async function pptxBoard(board) {
+    if (!board) return null;
+    const images = [];
+    for (const chart of board.charts) {
+      const match = chart.svg.match(/^<svg[^>]*?width="([\d.]+)"[^>]*?height="([\d.]+)"/);
+      if (!match) throw new Error("차트 크기를 읽지 못했습니다");
+      const blob = await svgToPng(chart.svg, +match[1], +match[2], 2);
+      const data = await new Promise((ok, fail) => {
+        const reader = new FileReader();
+        reader.onload = () => ok(reader.result);
+        reader.onerror = fail;
+        reader.readAsDataURL(blob);
+      });
+      images.push({ data, x: chart.x, y: chart.y, w: chart.w, h: chart.h, name: "차트" });
+    }
+    return { width: board.width, height: board.height, mapX: board.map.x, mapY: board.map.y, images };
   }
   // 곰곰 캔버스가 완성된 지도를 가져옵니다.
   window.exportMapForCanvas = async function () {
     const scene = D && freshScene();
     if (!scene) throw new Error("지도를 준비하는 중이에요. 잠시 후 다시 눌러주세요.");
-    return { blob: await sceneToPng(scene, 2.5), name: baseName(scene) || "대한민국 지도" };
+    const board = await chartBoard(scene);
+    return { blob: await sceneToPng(scene, 2.5, board), name: baseName(scene) || "대한민국 지도" };
   };
-  function exportPNG() {
+  async function exportPNG() {
     const scene = D && freshScene();
     if (!scene) return;
-    sceneToPng(scene, 2.5).then((b) => saveFile(baseName(scene) + ".png", b, "image/png"), () => toast("PNG를 만들지 못했습니다"));
+    try {
+      const board = await chartBoard(scene);
+      await saveFile(baseName(scene) + ".png", await sceneToPng(scene, 2.5, board), "image/png");
+    } catch (e) { toast(e.message); }
   }
-  function copyImage() {
+  async function copyImage() {
     const scene = D && freshScene();
     if (!scene) return;
     // 바탕이 투명하면 PPT 에 붙였을 때 보기 어려워 흰 바탕(또는 테마 바탕)을 깐다
     const solid = Object.assign({}, scene, { bg: scene.bg || "#FFFFFF" });
-    const png = sceneToPng(solid, 2);
     try {
+      const board = await chartBoard(solid);
+      const png = sceneToPng(solid, 2, board);
       navigator.clipboard
         .write([new ClipboardItem({ "image/png": png })])
         .then(() => toast("이미지를 복사했습니다. PPT에서 붙여넣기(Ctrl+V) 하세요"), () => toast("이 화면에서는 이미지 복사가 막혀 있습니다. PNG 저장을 써 주세요"));
@@ -1462,13 +1529,15 @@
     btn.disabled = true;
     try {
       await loadPptx();
+      const board = await chartBoard(scene);
       const backgrounds = [await backdropImage(scene)];
-      const pptx = window.KRMapPptx.buildPptx(window.PptxGenJS, scene, { footnote: S.heading.note ? "" : `${sourceNote()} · github.com/vuski/admdongkor`, backgrounds });
+      const boards = board ? [await pptxBoard(board)] : undefined;
+      const pptx = window.KRMapPptx.buildPptx(window.PptxGenJS, scene, { footnote: S.heading.note ? "" : `${sourceNote()} · github.com/vuski/admdongkor`, backgrounds, boards });
       const blob = await pptx.write({ outputType: "blob" });
       await saveFile(baseName(scene) + ".pptx", blob, "application/vnd.openxmlformats-officedocument.presentationml.presentation");
     } catch (e) {
       console.error(e);
-      toast("PPTX를 만들지 못했습니다");
+      toast(e.message || "PPTX를 만들지 못했습니다");
     } finally {
       btn.disabled = false;
     }

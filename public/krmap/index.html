@@ -216,6 +216,12 @@ details.more[open] summary { margin-bottom: 10px; }
 #map { cursor:grab; }
 #map.panning, #map.panning svg [data-id] { cursor:grabbing; }
 #map svg { width: 100%; height: clamp(360px, 60vh, 760px); display: block; }
+.slide.with-charts { gap: 1.5%; align-items: stretch; }
+.slide.with-charts #map { width: 65%; min-width: 0; align-items: center; }
+.slide.with-charts #map svg { height: auto; max-height: 760px; }
+#chartPreview { width: 33.5%; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 12px; color: var(--muted); font-size: 12px; }
+#chartPreview[hidden] { display: none; }
+#chartPreview svg { display: block; width: 100%; height: auto; background: white; }
 #map svg [data-id] { cursor: pointer; transition: opacity 0.12s; }
 #map svg [data-id]:hover { opacity: 0.8; }
 .loading { color: var(--muted); font-size: 13px; }
@@ -528,6 +534,16 @@ textarea.field { font-family: var(--font-data); font-size: 12px; line-height: 1.
           </div>
           <label class="chk"><input type="checkbox" id="dataValues" checked> 이름 아래 값 보이기</label>
         </div>
+        <div class="datacols" id="chartOptions">
+          <span class="lbl">지도 옆 차트</span>
+          <select class="field" id="charts" aria-label="지도 옆 차트">
+            <option value="none">차트 없음</option>
+            <option value="rank">지역별 순위</option>
+            <option value="distribution">전국 속 위치</option>
+            <option value="both">순위와 전국 속 위치</option>
+          </select>
+          <p class="note" id="chartHelp">숫자로 색칠한 지도에서 지역별 값을 비교할 수 있어요.</p>
+        </div>
       </section>
 
       <section class="card">
@@ -623,7 +639,7 @@ textarea.field { font-family: var(--font-data); font-size: 12px; line-height: 1.
             <button class="btn sm" id="editDone">닫기</button>
           </div>
         </div>
-        <div class="slide" id="slide"><div id="map"><span class="loading">경계 데이터를 불러오는 중입니다…</span></div></div>
+        <div class="slide" id="slide"><div id="map"><span class="loading">경계 데이터를 불러오는 중입니다…</span></div><div id="chartPreview" hidden role="status" aria-live="polite"></div></div>
         <div class="sheetcap" aria-hidden="true"><span>UTM-K · EPSG:5179</span><span>경계 통계청 SGIS · 2026.10.01</span></div>
       </div>
       <div class="info">
@@ -677,7 +693,8 @@ textarea.field { font-family: var(--font-data); font-size: 12px; line-height: 1.
 <script src="colors.js"></script>
 <script src="infographic.js"></script>
 <script src="advanced.js"></script>
-<script src="state.js?v=20261023b"></script>
+<script src="state.js?v=20261106"></script>
+<script src="charts.js?v=20261106"></script>
 <script src="pptx.js"></script>
 <script src="advanced-ui.js"></script>
 <script src="viewport.js?v=20261023b"></script>
@@ -690,6 +707,6 @@ textarea.field { font-family: var(--font-data); font-size: 12px; line-height: 1.
   <p class="note">울릉군 경계 데이터의 독도 도형을 확대했습니다. 이 상자는 화면에서만 표시됩니다.</p>
 </dialog>
 <script src="dokdo.js"></script>
-<script src="app.js?v=20261023b"></script>
+<script src="app.js?v=20261106"></script>
 </body>
 </html>
