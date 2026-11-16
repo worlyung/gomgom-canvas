@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/worlyung/korean-layout-compositions",
+  "revision": "eecc96fcc615a3b6ef3a2aafaf0169c868c39563",
+  "count": 278,
+  "license": "CC BY 4.0",
+  "author": "정재훈 / 한국형 레이아웃 구성 도감",
+  "changes": "원문 설명과 썸네일 보존. 썸네일 파일명은 번호로 변경. 자동 배치 구현은 별도 작성."
+}

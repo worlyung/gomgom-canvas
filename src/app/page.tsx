@@ -81,6 +81,8 @@ import { ArtboardDialog } from "@/components/artboard-dialog";
 import { CardnewsStudio } from "@/components/cardnews-studio";
 import { MapStudio } from "@/components/map-studio";
 import { LayerPosterStudio } from "@/components/layer-poster-studio";
+import { SourcePosterStudio } from "@/components/source-poster-studio";
+import { LayoutGallery } from "@/components/layout-gallery";
 import { cardLayers, CARD_W, CARD_H, type CardDeck } from "@/lib/cardnews";
 import {
   makeArtboard,
@@ -419,6 +421,7 @@ export default function OverlayPage() {
   const [showMinimap, setShowMinimap] = useState(false);
   const [variantCount, setVariantCount] = useState(1);
   const [layerPosterMode, setLayerPosterMode] = useState(false);
+  const [sourcePosterMode, setSourcePosterMode] = useState(false);
   const [posterLayout, setPosterLayout] = useState("auto");
   const [exactCopy, setExactCopy] = useState("");
   const [referenceKeep, setReferenceKeep] = useState("");
@@ -3139,7 +3142,7 @@ export default function OverlayPage() {
     if (
       !token ||
       !origin ||
-      !/^http:\/\/(localhost|127\.0\.0\.1):(?:8788|18788)$/.test(origin)
+      !/^http:\/\/(localhost|127\.0\.0\.1):(?:8788|18788|8892)$/.test(origin)
     )
       return;
     const receive = (event: MessageEvent) => {
@@ -3205,16 +3208,24 @@ export default function OverlayPage() {
           { id, src: image, x, y: 0, width: w, height: h, rotation: 0 },
         ]);
       setSelectedIds(image ? [id] : []);
-      setArtboard(null);
+      const isRender = event.data.kind === "render";
+      setArtboard(isRender ? board : null);
+      setTurdamSource(isRender ? "board" : "image");
       setViewport(fitArtboard(board, canvasSize.width, canvasSize.height));
       setGenerationSettings((prev) => ({
         ...prev,
-        prompt: `${name} 디자인. 가로 ${width}m × 세로 ${height}m 비율에 맞춰 주세요.`,
+        prompt: isRender
+          ? String(
+              event.data.brief || "행사장 이미지의 시설 배치를 유지하며 수정",
+            ).slice(0, 12000)
+          : `${name} 디자인. 가로 ${width}m × 세로 ${height}m 비율에 맞춰 주세요.`,
       }));
       setImageSize(sizeForAspect(w, h));
       setTurdam({ token, origin, name, board });
       setTurdamStatus(
-        "이미지를 만들거나 선택한 뒤 바로 적용하세요. 흰 작업판에 옮길 필요 없어요.",
+        isRender
+          ? "작업 면에서 글씨를 추가하거나 이미지를 수정한 뒤 ‘터담에 적용’을 누르세요. 전체 작업 면을 수정본으로 보냅니다."
+          : "이미지를 만들거나 선택한 뒤 바로 적용하세요. 흰 작업판에 옮길 필요 없어요.",
       );
     };
     window.addEventListener("message", receive);
@@ -3291,7 +3302,7 @@ export default function OverlayPage() {
     const timer = setTimeout(() => {
       setTurdamSending(false);
       setTurdamStatus(
-        "터담 응답이 없어요. 원래 무대 스튜디오가 열려 있는지 확인해 주세요.",
+        "터담 응답이 없어요. 원래 작업 화면이 열려 있는지 확인해 주세요. 새로고침했다면 터담에서 캔버스를 다시 연결하세요.",
       );
     }, 15000);
     return () => clearTimeout(timer);
@@ -4600,9 +4611,12 @@ export default function OverlayPage() {
           >
             <nav className="studio-nav" aria-label="작업 종류">
               <button
-                aria-current={!layerPosterMode ? "page" : undefined}
+                aria-current={
+                  !layerPosterMode && !sourcePosterMode ? "page" : undefined
+                }
                 onClick={() => {
                   setLayerPosterMode(false);
+                  setSourcePosterMode(false);
                   document.getElementById("studio-prompt")?.focus();
                 }}
                 disabled={isGenerating}
@@ -4612,9 +4626,22 @@ export default function OverlayPage() {
               <button
                 aria-pressed={layerPosterMode}
                 disabled={isGenerating}
-                onClick={() => setLayerPosterMode(true)}
+                onClick={() => {
+                  setLayerPosterMode(true);
+                  setSourcePosterMode(false);
+                }}
               >
                 레이어 포스터
+              </button>
+              <button
+                aria-pressed={sourcePosterMode}
+                disabled={isGenerating}
+                onClick={() => {
+                  setSourcePosterMode(true);
+                  setLayerPosterMode(false);
+                }}
+              >
+                원본으로 홍보물
               </button>
               <button
                 onClick={() => {
@@ -4657,7 +4684,27 @@ export default function OverlayPage() {
                 model={openaiModel}
               />
             )}
-            <div hidden={layerPosterMode}>
+            {sourcePosterMode && (
+              <SourcePosterStudio
+                images={images}
+                texts={texts}
+                shapes={shapes}
+                selectedIds={selectedIds}
+                setImages={setImages}
+                setTexts={setTexts}
+                setShapes={setShapes}
+                setSelectedIds={setSelectedIds}
+                saveHistory={saveToHistory}
+                busy={isGenerating}
+                setArtboard={(board) => {
+                  setArtboard(board);
+                  setViewport(
+                    fitArtboard(board, canvasSize.width, canvasSize.height),
+                  );
+                }}
+              />
+            )}
+            <div hidden={layerPosterMode || sourcePosterMode}>
               <div className="studio-section-title">
                 <span>이미지 만들기</span>
                 <small>생각을 한 장의 이미지로</small>
@@ -5228,6 +5275,11 @@ export default function OverlayPage() {
                             ))}
                           </select>
                         </label>
+                        <LayoutGallery
+                          mode="generate"
+                          onSelect={(id) => setPosterLayout(String(id))}
+                          disabled={isGenerating}
+                        />
                         <small>
                           4장 비교는 각기 다른 구도로 생성해요. 장수에 따라
                           비용이 늘어요. 구도 원칙:{" "}
