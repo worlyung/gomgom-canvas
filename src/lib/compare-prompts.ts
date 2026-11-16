@@ -1,4 +1,5 @@
 import type { PlacedImage } from "@/types/canvas";
+import { getPosterLayout } from "@/lib/poster-layouts";
 
 const directions = [
   "시안 A — 타이포그래피 중심. 글자가 필요한 작업이면 제목을 왼쪽 위에 크게 두고, 핵심 시각물 한 개를 오른쪽 아래에 배치한다. 시각물은 작은 크기로 쓰고 넓은 여백을 남긴다. 지정색이 없다면 따뜻한 아이보리·먹색에 빨강을 소량만 쓴다.",
@@ -117,7 +118,20 @@ export function continueReferenceBrief(
   ].join("\n\n");
 }
 
-export function comparisonPrompt(prompt: string, index: number): string {
+export function comparisonPrompt(
+  prompt: string,
+  index: number,
+  compositionId?: number,
+): string {
+  const composition = getPosterLayout(compositionId);
+  if (composition) {
+    return [
+      prompt,
+      `구도 ${composition.id} · ${composition.name}: ${composition.instruction}`,
+      `시안 ${index + 1}: 같은 행사와 필수 문구를 유지하면서 핵심 그림의 형태와 색 조합을 새로 설계하라.`,
+      "출력 이미지 전체를 독립된 포스터 한 장으로 사용하라. 한 화면에 포스터 여러 장, 4분할 시안, 목업을 그리지 마라. 포스터 내부의 구획은 허용한다.",
+    ].join("\n\n");
+  }
   return [
     prompt,
     directions[index % directions.length],

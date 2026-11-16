@@ -44,7 +44,10 @@ export async function saveBoard(a: SaveArgs) {
   } catch {}
   const haveSet = new Set(have);
 
-  const missing = a.images.filter((i) => !haveSet.has(i.id));
+  // 레이어 포스터는 요소 교체 시 id와 배치를 유지하므로 최신 픽셀을 다시 올린다.
+  const missing = a.images.filter(
+    (i) => !haveSet.has(i.id) || i.generation?.layerPoster,
+  );
   for (let i = 0; i < missing.length; i++) {
     a.onProgress?.(`이미지 올리는 중 ${i + 1}/${missing.length}`);
     const res = await fetch(`/api/boards/${a.boardId}/images`, {

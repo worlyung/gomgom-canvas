@@ -55,10 +55,24 @@ const sharp = require("sharp");
           request.prompt.includes("2026 서울 한국춤 페스티벌") &&
           request.prompt.includes("2026.12.7~12.8") &&
           request.prompt.includes("서울남산국악당·남산골한옥마을") &&
-          request.prompt.includes("독립 시안 한 장") &&
+          request.prompt.includes("독립된 포스터 한 장") &&
           !request.prompt.includes("4장을 각각 만들자") &&
           !request.prompt.includes("4개 이미지를 만들라고"),
       ),
+    );
+    assert.deepEqual(
+      requests
+        .slice(0, 4)
+        .map((request) => Number(/구도 (\d+) ·/.exec(request.prompt)?.[1])),
+      [142, 143, 146, 148],
+    );
+    assert.deepEqual(
+      await page.evaluate(() =>
+        JSON.parse(localStorage.getItem("canvas-state") || "{}")
+          .elements.filter((item) => item.type === "image")
+          .map((item) => item.generation?.compositionId),
+      ),
+      [142, 143, 146, 148],
     );
 
     await page.getByLabel("시안 수", { exact: true }).selectOption("1");
@@ -102,10 +116,12 @@ const sharp = require("sharp");
             !request.prompt.includes("4장을 뽑아봐"),
         ),
     );
-    assert(requests[4].prompt.includes("제목을 왼쪽 위"));
-    assert(requests[5].prompt.includes("화면 중앙"));
-    assert(requests[6].prompt.includes("상징 오브제"));
-    assert(requests[7].prompt.includes("상단 절반 이상"));
+    assert.deepEqual(
+      requests
+        .slice(4, 8)
+        .map((request) => Number(/구도 (\d+) ·/.exec(request.prompt)?.[1])),
+      [142, 143, 146, 148],
+    );
 
     await page.getByLabel("시안 수", { exact: true }).selectOption("1");
     await page
@@ -215,9 +231,37 @@ const sharp = require("sharp");
           request.prompt.includes("2026 서울 한국춤 페스티벌") &&
           request.prompt.includes("2026.12.7~12.8") &&
           request.prompt.includes("서울남산국악당·남산골한옥마을") &&
-          request.prompt.includes("한 화면에 여러 포스터나 격자") &&
+          request.prompt.includes("한 화면에 포스터 여러 장") &&
           !request.prompt.includes("서로 다른 제목 위치") &&
           !request.prompt.includes("한 이미지를 하지 마"),
+      ),
+    );
+
+    const fixedPage = await browser.newPage();
+    const fixedRequests = [];
+    await fixedPage.route("**/api/generate", (route) => {
+      fixedRequests.push(route.request().postDataJSON());
+      return route.fulfill({ json: { images: [png], model: "mock" } });
+    });
+    await fixedPage.goto(
+      process.env.CANVAS_TEST_URL || "http://127.0.0.1:3011/",
+    );
+    await fixedPage.locator("#studio-prompt").fill("한국춤 포스터");
+    await fixedPage.getByLabel("포스터 구도").selectOption("148");
+    await fixedPage.getByLabel("시안 수", { exact: true }).selectOption("2");
+    await fixedPage
+      .getByRole("button", { name: "이미지 생성", exact: true })
+      .click();
+    await fixedPage.waitForFunction(
+      () =>
+        JSON.parse(
+          localStorage.getItem("canvas-state") || "{}",
+        ).elements?.filter((item) => item.type === "image").length === 2,
+    );
+    assert.equal(fixedRequests.length, 2);
+    assert(
+      fixedRequests.every((request) =>
+        request.prompt.includes("구도 148 · 실루엣 판면"),
       ),
     );
 

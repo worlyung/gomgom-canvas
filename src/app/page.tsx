@@ -80,6 +80,7 @@ import { LayerPanel } from "@/components/layer-panel";
 import { ArtboardDialog } from "@/components/artboard-dialog";
 import { CardnewsStudio } from "@/components/cardnews-studio";
 import { MapStudio } from "@/components/map-studio";
+import { LayerPosterStudio } from "@/components/layer-poster-studio";
 import { cardLayers, CARD_W, CARD_H, type CardDeck } from "@/lib/cardnews";
 import {
   makeArtboard,
@@ -189,6 +190,7 @@ import {
   requestedImageCount,
   stableBriefFromPrompt,
 } from "@/lib/compare-prompts";
+import { getPosterLayout, POSTER_LAYOUTS } from "@/lib/poster-layouts";
 import { HistoryPanel } from "@/components/history-panel";
 import { RevisionLinks } from "@/components/canvas/RevisionLinks";
 import { CompanyAssets } from "@/components/canvas/CompanyAssets";
@@ -416,6 +418,8 @@ export default function OverlayPage() {
   const [showGrid, setShowGrid] = useState(true);
   const [showMinimap, setShowMinimap] = useState(false);
   const [variantCount, setVariantCount] = useState(1);
+  const [layerPosterMode, setLayerPosterMode] = useState(false);
+  const [posterLayout, setPosterLayout] = useState("auto");
   const [exactCopy, setExactCopy] = useState("");
   const [referenceKeep, setReferenceKeep] = useState("");
   const [inheritReferencePrompt, setInheritReferencePrompt] = useState(true);
@@ -427,6 +431,9 @@ export default function OverlayPage() {
     null,
   );
   const [variationFeedback, setVariationFeedback] = useState("");
+  const [variationLayout, setVariationLayout] = useState<"same" | "different">(
+    "same",
+  );
   const [variationMode, setVariationMode] = useState<"style" | "content">(
     "style",
   );
@@ -1188,6 +1195,7 @@ export default function OverlayPage() {
               src: imageData.originalDataUrl,
               ...(element.promptHint && { promptHint: element.promptHint }),
               generation: element.generation,
+              opacity: element.opacity,
               x: element.transform.x,
               y: element.transform.y,
               width: element.width || 300,
@@ -1239,6 +1247,24 @@ export default function OverlayPage() {
       setNotes(restoredNotes);
       if (loadedImages.length > 0) {
         setImages(loadedImages);
+        const savedPoster = [...loadedImages]
+          .reverse()
+          .find(
+            (image) => image.generation?.layerPoster?.role === "background",
+          );
+        if (savedPoster) {
+          setLayerPosterMode(true);
+          setArtboard({
+            x: savedPoster.x,
+            y: savedPoster.y,
+            width: savedPoster.width,
+            height: savedPoster.height,
+            widthMm: (savedPoster.width * 25.4) / 100,
+            heightMm: (savedPoster.height * 25.4) / 100,
+            dpi: 100,
+            name: savedPoster.generation!.layerPoster!.title,
+          });
+        }
       }
 
       if (loadedVideos.length > 0) {
@@ -2542,6 +2568,7 @@ export default function OverlayPage() {
   const promptImageCount = requestedImageCount(generationSettings.prompt);
 
   const handleRun = async () => {
+    if (layerPosterMode || isGenerating) return;
     setGenerationError("");
     const resolvedSize = imageSize;
     if (resolvedSize !== imageSize) setImageSize(resolvedSize);
@@ -2568,6 +2595,7 @@ export default function OverlayPage() {
         .filter(Boolean)
         .join("\n\n"),
       n: count,
+      composition: posterLayout === "auto" ? "auto" : Number(posterLayout),
       inheritReferencePrompt,
       workspaceLeft:
         canvasSize.width >= 1440 ? 420 : canvasSize.width >= 768 ? 348 : 0,
@@ -2599,6 +2627,7 @@ export default function OverlayPage() {
       return;
     setVariationSourceId(source.id);
     setVariationFeedback("");
+    setVariationLayout("same");
     setVariationMode("style");
     setVariationError("");
   };
@@ -2626,6 +2655,10 @@ export default function OverlayPage() {
         inheritReferencePrompt: false,
         placement: "new-row",
         n: 4,
+        composition:
+          variationLayout === "same" && source.generation.compositionId
+            ? source.generation.compositionId
+            : "auto",
         workspaceLeft:
           canvasSize.width >= 1440 ? 420 : canvasSize.width >= 768 ? 348 : 0,
         workspaceRight: canvasSize.width >= 1100 ? 280 : 0,
@@ -4567,12 +4600,21 @@ export default function OverlayPage() {
           >
             <nav className="studio-nav" aria-label="작업 종류">
               <button
-                aria-current="page"
-                onClick={() =>
-                  document.getElementById("studio-prompt")?.focus()
-                }
+                aria-current={!layerPosterMode ? "page" : undefined}
+                onClick={() => {
+                  setLayerPosterMode(false);
+                  document.getElementById("studio-prompt")?.focus();
+                }}
+                disabled={isGenerating}
               >
                 이미지 만들기
+              </button>
+              <button
+                aria-pressed={layerPosterMode}
+                disabled={isGenerating}
+                onClick={() => setLayerPosterMode(true)}
+              >
+                레이어 포스터
               </button>
               <button
                 onClick={() => {
@@ -4595,780 +4637,851 @@ export default function OverlayPage() {
                 지도 만들기
               </button>
             </nav>
-            <div className="studio-section-title">
-              <span>이미지 만들기</span>
-              <small>생각을 한 장의 이미지로</small>
-            </div>
-            <div
-              className={cn(
-                "studio-composer-body bg-card",
-                "dark:shadow-none dark:outline dark:outline-1 dark:outline-border",
-              )}
-            >
-              <div className="flex flex-col gap-3 px-3 md:px-3 py-2 md:py-3 relative">
-                {/* Active generations indicator */}
-                <AnimatePresence mode="wait">
-                  {(activeGenerations.size > 0 ||
-                    activeVideoGenerations.size > 0 ||
-                    isGenerating ||
-                    isRemovingVideoBackground ||
-                    isIsolating ||
-                    isExtendingVideo ||
-                    isTransformingVideo ||
-                    showSuccess) && (
-                    <motion.div
-                      key={showSuccess ? "success" : "generating"}
-                      initial={{ opacity: 0, y: -10, scale: 0.9, x: "-50%" }}
-                      animate={{ opacity: 1, y: 0, scale: 1, x: "-50%" }}
-                      exit={{ opacity: 0, y: -10, scale: 0.9, x: "-50%" }}
-                      transition={{ duration: 0.2, ease: "easeInOut" }}
-                      className={cn(
-                        "fixed z-50 top-20 left-1/2",
-                        "rounded-xl",
-                        showSuccess
-                          ? "shadow-[0_0_0_1px_rgba(34,197,94,0.2),0_4px_8px_-0.5px_rgba(34,197,94,0.08),0_8px_16px_-2px_rgba(34,197,94,0.04)] dark:shadow-none dark:border dark:border-green-500/30"
-                          : activeVideoGenerations.size > 0 ||
-                              isRemovingVideoBackground ||
-                              isExtendingVideo ||
-                              isTransformingVideo
-                            ? "shadow-[0_0_0_1px_rgba(168,85,247,0.2),0_4px_8px_-0.5px_rgba(168,85,247,0.08),0_8px_16px_-2px_rgba(168,85,247,0.04)] dark:shadow-none dark:border dark:border-purple-500/30"
-                            : "shadow-[0_0_0_1px_rgba(236,6,72,0.2),0_4px_8px_-0.5px_rgba(236,6,72,0.08),0_8px_16px_-2px_rgba(236,6,72,0.04)] dark:shadow-none dark:border dark:border-[#EC0648]/30",
-                      )}
-                    >
-                      <GenerationsIndicator
-                        isAnimating={!showSuccess}
-                        isSuccess={showSuccess}
-                        className="w-5 h-5"
-                        activeGenerationsSize={
-                          activeGenerations.size +
-                          activeVideoGenerations.size +
-                          (isGenerating ? 1 : 0) +
-                          (isRemovingVideoBackground ? 1 : 0) +
-                          (isIsolating ? 1 : 0) +
-                          (isExtendingVideo ? 1 : 0) +
-                          (isTransformingVideo ? 1 : 0)
-                        }
-                        outputType={
-                          activeVideoGenerations.size > 0 ||
-                          isRemovingVideoBackground ||
-                          isExtendingVideo ||
-                          isTransformingVideo
-                            ? "video"
-                            : "image"
-                        }
-                      />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+            {layerPosterMode && (
+              <LayerPosterStudio
+                images={images}
+                texts={texts}
+                selectedIds={selectedIds}
+                setImages={setImages}
+                setTexts={setTexts}
+                setSelectedIds={setSelectedIds}
+                setArtboard={(board) => {
+                  setArtboard(board);
+                  setViewport(
+                    fitArtboard(board, canvasSize.width, canvasSize.height),
+                  );
+                }}
+                saveHistory={saveToHistory}
+                busy={isGenerating}
+                setBusy={setIsGenerating}
+                model={openaiModel}
+              />
+            )}
+            <div hidden={layerPosterMode}>
+              <div className="studio-section-title">
+                <span>이미지 만들기</span>
+                <small>생각을 한 장의 이미지로</small>
+              </div>
+              <div
+                className={cn(
+                  "studio-composer-body bg-card",
+                  "dark:shadow-none dark:outline dark:outline-1 dark:outline-border",
+                )}
+              >
+                <div className="flex flex-col gap-3 px-3 md:px-3 py-2 md:py-3 relative">
+                  {/* Active generations indicator */}
+                  <AnimatePresence mode="wait">
+                    {(activeGenerations.size > 0 ||
+                      activeVideoGenerations.size > 0 ||
+                      isGenerating ||
+                      isRemovingVideoBackground ||
+                      isIsolating ||
+                      isExtendingVideo ||
+                      isTransformingVideo ||
+                      showSuccess) && (
+                      <motion.div
+                        key={showSuccess ? "success" : "generating"}
+                        initial={{ opacity: 0, y: -10, scale: 0.9, x: "-50%" }}
+                        animate={{ opacity: 1, y: 0, scale: 1, x: "-50%" }}
+                        exit={{ opacity: 0, y: -10, scale: 0.9, x: "-50%" }}
+                        transition={{ duration: 0.2, ease: "easeInOut" }}
+                        className={cn(
+                          "fixed z-50 top-20 left-1/2",
+                          "rounded-xl",
+                          showSuccess
+                            ? "shadow-[0_0_0_1px_rgba(34,197,94,0.2),0_4px_8px_-0.5px_rgba(34,197,94,0.08),0_8px_16px_-2px_rgba(34,197,94,0.04)] dark:shadow-none dark:border dark:border-green-500/30"
+                            : activeVideoGenerations.size > 0 ||
+                                isRemovingVideoBackground ||
+                                isExtendingVideo ||
+                                isTransformingVideo
+                              ? "shadow-[0_0_0_1px_rgba(168,85,247,0.2),0_4px_8px_-0.5px_rgba(168,85,247,0.08),0_8px_16px_-2px_rgba(168,85,247,0.04)] dark:shadow-none dark:border dark:border-purple-500/30"
+                              : "shadow-[0_0_0_1px_rgba(236,6,72,0.2),0_4px_8px_-0.5px_rgba(236,6,72,0.08),0_8px_16px_-2px_rgba(236,6,72,0.04)] dark:shadow-none dark:border dark:border-[#EC0648]/30",
+                        )}
+                      >
+                        <GenerationsIndicator
+                          isAnimating={!showSuccess}
+                          isSuccess={showSuccess}
+                          className="w-5 h-5"
+                          activeGenerationsSize={
+                            activeGenerations.size +
+                            activeVideoGenerations.size +
+                            (isGenerating ? 1 : 0) +
+                            (isRemovingVideoBackground ? 1 : 0) +
+                            (isIsolating ? 1 : 0) +
+                            (isExtendingVideo ? 1 : 0) +
+                            (isTransformingVideo ? 1 : 0)
+                          }
+                          outputType={
+                            activeVideoGenerations.size > 0 ||
+                            isRemovingVideoBackground ||
+                            isExtendingVideo ||
+                            isTransformingVideo
+                              ? "video"
+                              : "image"
+                          }
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
-                {/* Action buttons row */}
-                <div
-                  className={
-                    selectedIds.some(
-                      (id) =>
-                        texts.some((t) => t.id === id) ||
-                        shapes.some((s) => s.id === id),
-                    )
-                      ? "studio-properties"
-                      : ""
-                  }
-                >
-                  {(() => {
-                    const sp = shapes.find((x) => selectedIds.includes(x.id));
-                    if (sp)
-                      return (
-                        <ShapeToolbar
-                          item={sp}
+                  {/* Action buttons row */}
+                  <div
+                    className={
+                      selectedIds.some(
+                        (id) =>
+                          texts.some((t) => t.id === id) ||
+                          shapes.some((s) => s.id === id),
+                      )
+                        ? "studio-properties"
+                        : ""
+                    }
+                  >
+                    {(() => {
+                      const sp = shapes.find((x) => selectedIds.includes(x.id));
+                      if (sp)
+                        return (
+                          <ShapeToolbar
+                            item={sp}
+                            onChange={(patch) =>
+                              setShapes((prev) =>
+                                prev.map((x) =>
+                                  x.id === sp.id ? { ...x, ...patch } : x,
+                                ),
+                              )
+                            }
+                            onDelete={() => {
+                              saveToHistory();
+                              setShapes((prev) =>
+                                prev.filter((x) => x.id !== sp.id),
+                              );
+                              setSelectedIds([]);
+                            }}
+                          />
+                        );
+                      // 메모는 하단 바가 아니라 메모지 위에서 바로 고친다 (NoteInlineEditor)
+                      return null;
+                    })()}
+
+                    {(() => {
+                      const sel = texts.find((t) => selectedIds.includes(t.id));
+                      return sel ? (
+                        <TextToolbar
+                          item={sel}
                           onChange={(patch) =>
-                            setShapes((prev) =>
-                              prev.map((x) =>
-                                x.id === sp.id ? { ...x, ...patch } : x,
+                            setTexts((prev) =>
+                              prev.map((t) =>
+                                t.id === sel.id ? { ...t, ...patch } : t,
                               ),
                             )
                           }
                           onDelete={() => {
                             saveToHistory();
-                            setShapes((prev) =>
-                              prev.filter((x) => x.id !== sp.id),
+                            setTexts((prev) =>
+                              prev.filter((t) => t.id !== sel.id),
                             );
                             setSelectedIds([]);
                           }}
                         />
-                      );
-                    // 메모는 하단 바가 아니라 메모지 위에서 바로 고친다 (NoteInlineEditor)
-                    return null;
-                  })()}
-
-                  {(() => {
-                    const sel = texts.find((t) => selectedIds.includes(t.id));
-                    return sel ? (
-                      <TextToolbar
-                        item={sel}
-                        onChange={(patch) =>
-                          setTexts((prev) =>
-                            prev.map((t) =>
-                              t.id === sel.id ? { ...t, ...patch } : t,
-                            ),
-                          )
-                        }
-                        onDelete={() => {
-                          saveToHistory();
-                          setTexts((prev) =>
-                            prev.filter((t) => t.id !== sel.id),
-                          );
-                          setSelectedIds([]);
-                        }}
-                      />
-                    ) : null;
-                  })()}
-                </div>
-                <label
-                  htmlFor="studio-prompt"
-                  className="text-sm font-semibold"
-                >
-                  어떤 이미지를 만들까요?
-                </label>
-                <div className="space-y-2">
-                  <Textarea
-                    id="studio-prompt"
-                    disabled={!extrasLoaded}
-                    value={generationSettings.prompt}
-                    onChange={(e) =>
-                      setGenerationSettings({
-                        ...generationSettings,
-                        prompt: e.target.value,
-                      })
-                    }
-                    // OS 분기를 아예 안 쓴다 — 서버는 브라우저의 OS를 모르니 ⌘로 렌더하고
-                    // 윈도우 브라우저는 Ctrl로 렌더해서 하이드레이션이 깨졌다. 둘 다 적으면 안 갈린다.
-                    placeholder="프롬프트를 입력하세요… (Ctrl/⌘+Enter 실행)"
-                    className="studio-prompt-input w-full min-h-[260px] resize-y rounded-xl border p-3"
-                    style={{ fontSize: "16px" }}
-                    onKeyDown={(e) => {
-                      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                        e.preventDefault();
-                        if (!isGenerating && generationSettings.prompt.trim()) {
-                          handleRun();
-                        }
-                      }
-                    }}
-                  />
-
-                  <div className="studio-reference-controls">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-semibold">참고 이미지</span>
-                      <input
-                        ref={referenceInputRef}
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        className="sr-only"
-                        aria-label="참고 이미지 파일 선택"
-                        onChange={(event) => {
-                          if (!event.currentTarget.files?.length) return;
-                          setSelectedIds([]);
-                          handleFileUpload(
-                            event.currentTarget.files,
-                            undefined,
-                            true,
-                          );
-                          event.currentTarget.value = "";
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={isGenerating}
-                        onClick={() => referenceInputRef.current?.click()}
-                      >
-                        + 이미지 추가
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      이미지를 추가하거나 캔버스에서 한 장을 선택하면
-                      참고합니다.
-                    </p>
+                      ) : null;
+                    })()}
                   </div>
-
-                  {images.some((image) => selectedIds.includes(image.id)) && (
-                    <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-3 py-2 text-xs">
-                      <span>
-                        참조 이미지{" "}
-                        {
-                          selectedIds.filter((id) =>
-                            images.some((image) => image.id === id),
-                          ).length
-                        }
-                        장 선택됨
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="xs"
-                        onClick={() => setSelectedIds([])}
-                      >
-                        참조 해제
-                      </Button>
-                      <div className="relative h-12 w-20">
-                        {selectedIds.slice(0, 3).map((id, index) => {
-                          const image = images.find((img) => img.id === id);
-                          if (!image) return null;
-
-                          const isLast =
-                            index === Math.min(selectedIds.length - 1, 2);
-                          const offset = index * 8;
-                          // Make each card progressively smaller
-                          const size = 40 - index * 4;
-                          const topOffset = index * 2; // Offset from top to maintain visual alignment
-
-                          return (
-                            <div
-                              key={id}
-                              className="absolute rounded-lg border border-border/20 bg-background overflow-hidden"
-                              style={{
-                                right: `${offset}px`,
-                                top: `${topOffset}px`,
-                                zIndex: 3 - index,
-                                width: `${size}px`,
-                                height: `${size}px`,
-                              }}
-                            >
-                              <img
-                                src={image.src}
-                                alt=""
-                                className="w-full h-full object-cover"
-                              />
-                              {/* Show count on last visible card if more than 3 selected */}
-                              {isLast && selectedIds.length > 3 && (
-                                <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                                  <span className="text-white text-xs font-medium">
-                                    +{selectedIds.length - 3}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {showingPriorBrief && suggestedBrief && (
-                  <label className="block rounded-lg border border-border/60 bg-muted/50 px-3 py-2 text-xs">
-                    <span className="flex items-center gap-2 font-medium">
-                      <input
-                        type="checkbox"
-                        checked={inheritReferencePrompt}
-                        onChange={(e) =>
-                          setInheritReferencePrompt(e.target.checked)
-                        }
-                      />
-                      이전 작업 주제 이어가기
-                    </span>
-                    <span className="mt-1 block text-muted-foreground line-clamp-2">
-                      {suggestedBrief}
-                    </span>
-                  </label>
-                )}
-                {generationError && (
-                  <div
-                    role="alert"
-                    className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-900"
+                  <label
+                    htmlFor="studio-prompt"
+                    className="text-sm font-semibold"
                   >
-                    <strong>생성 실패</strong>
-                    <p className="mt-1 break-all">{generationError}</p>
-                  </div>
-                )}
-
-                <details className="studio-prompt-guide">
-                  <summary>문구·참조 세부 지시</summary>
-                  <label>
-                    이미지에 넣을 정확한 문구
-                    <textarea
-                      aria-label="이미지에 넣을 정확한 문구"
-                      value={exactCopy}
-                      onChange={(e) => setExactCopy(e.target.value)}
-                      placeholder="예: 가을밤, 국악과 만나다"
-                    />
+                    어떤 이미지를 만들까요?
                   </label>
-                  <label>
-                    참조에서 유지할 특징
-                    <textarea
-                      aria-label="참조에서 유지할 특징"
-                      value={referenceKeep}
-                      onChange={(e) => setReferenceKeep(e.target.value)}
-                      placeholder="예: 인물의 얼굴, 의상과 로고 색상"
-                    />
-                  </label>
-                  {images.some((image) => selectedIds.includes(image.id)) && (
-                    <label>
-                      참조 이미지 사용 방식
-                      <select
-                        aria-label="참조 이미지 사용 방식"
-                        value={referenceMode}
-                        onChange={(e) =>
-                          setReferenceMode(
-                            e.target.value as "style" | "content",
-                          )
+                  <div className="space-y-2">
+                    <Textarea
+                      id="studio-prompt"
+                      disabled={!extrasLoaded}
+                      value={generationSettings.prompt}
+                      onChange={(e) =>
+                        setGenerationSettings({
+                          ...generationSettings,
+                          prompt: e.target.value,
+                        })
+                      }
+                      // OS 분기를 아예 안 쓴다 — 서버는 브라우저의 OS를 모르니 ⌘로 렌더하고
+                      // 윈도우 브라우저는 Ctrl로 렌더해서 하이드레이션이 깨졌다. 둘 다 적으면 안 갈린다.
+                      placeholder="프롬프트를 입력하세요… (Ctrl/⌘+Enter 실행)"
+                      className="studio-prompt-input w-full min-h-[260px] resize-y rounded-xl border p-3"
+                      style={{ fontSize: "16px" }}
+                      onKeyDown={(e) => {
+                        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                          e.preventDefault();
+                          if (
+                            !isGenerating &&
+                            generationSettings.prompt.trim()
+                          ) {
+                            handleRun();
+                          }
                         }
-                      >
-                        <option value="style">느낌만 참조 · 글자 제외</option>
-                        <option value="content">내용과 형태 유지</option>
-                      </select>
+                      }}
+                    />
+
+                    <div className="studio-reference-controls">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-semibold">
+                          참고 이미지
+                        </span>
+                        <input
+                          ref={referenceInputRef}
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="sr-only"
+                          aria-label="참고 이미지 파일 선택"
+                          onChange={(event) => {
+                            if (!event.currentTarget.files?.length) return;
+                            setSelectedIds([]);
+                            handleFileUpload(
+                              event.currentTarget.files,
+                              undefined,
+                              true,
+                            );
+                            event.currentTarget.value = "";
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={isGenerating}
+                          onClick={() => referenceInputRef.current?.click()}
+                        >
+                          + 이미지 추가
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        이미지를 추가하거나 캔버스에서 한 장을 선택하면
+                        참고합니다.
+                      </p>
+                    </div>
+
+                    {images.some((image) => selectedIds.includes(image.id)) && (
+                      <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-3 py-2 text-xs">
+                        <span>
+                          참조 이미지{" "}
+                          {
+                            selectedIds.filter((id) =>
+                              images.some((image) => image.id === id),
+                            ).length
+                          }
+                          장 선택됨
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="xs"
+                          onClick={() => setSelectedIds([])}
+                        >
+                          참조 해제
+                        </Button>
+                        <div className="relative h-12 w-20">
+                          {selectedIds.slice(0, 3).map((id, index) => {
+                            const image = images.find((img) => img.id === id);
+                            if (!image) return null;
+
+                            const isLast =
+                              index === Math.min(selectedIds.length - 1, 2);
+                            const offset = index * 8;
+                            // Make each card progressively smaller
+                            const size = 40 - index * 4;
+                            const topOffset = index * 2; // Offset from top to maintain visual alignment
+
+                            return (
+                              <div
+                                key={id}
+                                className="absolute rounded-lg border border-border/20 bg-background overflow-hidden"
+                                style={{
+                                  right: `${offset}px`,
+                                  top: `${topOffset}px`,
+                                  zIndex: 3 - index,
+                                  width: `${size}px`,
+                                  height: `${size}px`,
+                                }}
+                              >
+                                <img
+                                  src={image.src}
+                                  alt=""
+                                  className="w-full h-full object-cover"
+                                />
+                                {/* Show count on last visible card if more than 3 selected */}
+                                {isLast && selectedIds.length > 3 && (
+                                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                                    <span className="text-white text-xs font-medium">
+                                      +{selectedIds.length - 3}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {showingPriorBrief && suggestedBrief && (
+                    <label className="block rounded-lg border border-border/60 bg-muted/50 px-3 py-2 text-xs">
+                      <span className="flex items-center gap-2 font-medium">
+                        <input
+                          type="checkbox"
+                          checked={inheritReferencePrompt}
+                          onChange={(e) =>
+                            setInheritReferencePrompt(e.target.checked)
+                          }
+                        />
+                        이전 작업 주제 이어가기
+                      </span>
+                      <span className="mt-1 block text-muted-foreground line-clamp-2">
+                        {suggestedBrief}
+                      </span>
                     </label>
                   )}
-                  <p>
-                    캔버스에서 이미지를 선택하면 참조로 씁니다. 느낌만 참조할
-                    때는 이미지 속 글자를 읽을 수 없게 낮은 해상도로 전달합니다.
-                  </p>
-                </details>
-                <div className="studio-generation-controls">
-                  <div
-                    className="px-1 text-xs text-muted-foreground"
-                    role="status"
-                  >
-                    출력 크기 · {imageSize.replace("x", " × ")}px
-                    {artboard &&
-                      Math.abs(
-                        artboard.width / artboard.height -
-                          Number(imageSize.split("x")[0]) /
-                            Number(imageSize.split("x")[1]),
-                      ) > 0.02 && (
-                        <span className="ml-2 text-amber-700">
-                          작업판과 비율이 달라요 · 적용할 때 맞춤 방식을
-                          선택하세요
-                        </span>
-                      )}
-                  </div>
-                  <div className="studio-control-row flex-wrap">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="h-7 text-xs"
-                      disabled={
-                        isEnhancing || !generationSettings.prompt.trim()
-                      }
-                      onClick={enhancePrompt}
-                      title="대충 쓴 문장을 구체적인 묘사로 바꿔줍니다"
+                  {generationError && (
+                    <div
+                      role="alert"
+                      className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-900"
                     >
-                      {isEnhancing ? "다듬는 중…" : "✨ 프롬프트 다듬기"}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={() => {
-                        setCampaignRequest(generationSettings.prompt);
-                        setCampaignOpen(true);
-                      }}
-                      title="한 줄 요청을 로고·포스터·배너 등으로 쪼개 한 번에 만듭니다"
+                      <strong>생성 실패</strong>
+                      <p className="mt-1 break-all">{generationError}</p>
+                    </div>
+                  )}
+
+                  <details className="studio-prompt-guide">
+                    <summary>문구·참조 세부 지시</summary>
+                    <label>
+                      이미지에 넣을 정확한 문구
+                      <textarea
+                        aria-label="이미지에 넣을 정확한 문구"
+                        value={exactCopy}
+                        onChange={(e) => setExactCopy(e.target.value)}
+                        placeholder="예: 가을밤, 국악과 만나다"
+                      />
+                    </label>
+                    <label>
+                      참조에서 유지할 특징
+                      <textarea
+                        aria-label="참조에서 유지할 특징"
+                        value={referenceKeep}
+                        onChange={(e) => setReferenceKeep(e.target.value)}
+                        placeholder="예: 인물의 얼굴, 의상과 로고 색상"
+                      />
+                    </label>
+                    {images.some((image) => selectedIds.includes(image.id)) && (
+                      <label>
+                        참조 이미지 사용 방식
+                        <select
+                          aria-label="참조 이미지 사용 방식"
+                          value={referenceMode}
+                          onChange={(e) =>
+                            setReferenceMode(
+                              e.target.value as "style" | "content",
+                            )
+                          }
+                        >
+                          <option value="style">느낌만 참조 · 글자 제외</option>
+                          <option value="content">내용과 형태 유지</option>
+                        </select>
+                      </label>
+                    )}
+                    <p>
+                      캔버스에서 이미지를 선택하면 참조로 씁니다. 느낌만 참조할
+                      때는 이미지 속 글자를 읽을 수 없게 낮은 해상도로
+                      전달합니다.
+                    </p>
+                  </details>
+                  <div className="studio-generation-controls">
+                    <div
+                      className="px-1 text-xs text-muted-foreground"
+                      role="status"
                     >
-                      🎯 캠페인 한 번에
-                    </Button>
-                    {promptBeforeEnhance !== null && (
+                      출력 크기 · {imageSize.replace("x", " × ")}px
+                      {artboard &&
+                        Math.abs(
+                          artboard.width / artboard.height -
+                            Number(imageSize.split("x")[0]) /
+                              Number(imageSize.split("x")[1]),
+                        ) > 0.02 && (
+                          <span className="ml-2 text-amber-700">
+                            작업판과 비율이 달라요 · 적용할 때 맞춤 방식을
+                            선택하세요
+                          </span>
+                        )}
+                    </div>
+                    <div className="studio-control-row flex-wrap">
                       <Button
-                        variant="ghost"
+                        variant="secondary"
+                        size="sm"
+                        className="h-7 text-xs"
+                        disabled={
+                          isEnhancing || !generationSettings.prompt.trim()
+                        }
+                        onClick={enhancePrompt}
+                        title="대충 쓴 문장을 구체적인 묘사로 바꿔줍니다"
+                      >
+                        {isEnhancing ? "다듬는 중…" : "✨ 프롬프트 다듬기"}
+                      </Button>
+                      <Button
+                        variant="secondary"
                         size="sm"
                         className="h-7 text-xs"
                         onClick={() => {
-                          setGenerationSettings((prev) => ({
-                            ...prev,
-                            prompt: promptBeforeEnhance,
-                          }));
-                          setPromptBeforeEnhance(null);
+                          setCampaignRequest(generationSettings.prompt);
+                          setCampaignOpen(true);
                         }}
+                        title="한 줄 요청을 로고·포스터·배너 등으로 쪼개 한 번에 만듭니다"
                       >
-                        ↩ 되돌리기
+                        🎯 캠페인 한 번에
                       </Button>
-                    )}
-                  </div>
-                  <div className="studio-control-group">
-                    <span className="studio-control-heading">생성 모델</span>
-                    <div className="studio-control-row">
-                      <Select
-                        value={providerId}
-                        onValueChange={(v) => setProviderId(v as ProviderId)}
-                      >
-                        <SelectTrigger className="h-7 w-[104px] text-xs">
-                          <SelectValue placeholder="OpenAI" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {providerList.map((p) => (
-                            <SelectItem key={p.id} value={p.id}>
-                              <span className="flex items-center gap-1.5">
-                                <span
-                                  className={
-                                    p.configured
-                                      ? "text-green-600"
-                                      : "text-muted-foreground"
-                                  }
-                                >
-                                  ●
-                                </span>
-                                {p.label.split(" (")[0]}
-                              </span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {providerId === "openai" && (
-                        <Select
-                          value={openaiModel}
-                          onValueChange={setOpenaiModel}
+                      {promptBeforeEnhance !== null && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            setGenerationSettings((prev) => ({
+                              ...prev,
+                              prompt: promptBeforeEnhance,
+                            }));
+                            setPromptBeforeEnhance(null);
+                          }}
                         >
-                          <SelectTrigger
-                            className="h-7 w-[150px] text-xs"
-                            title="생성 모델. 부분수정·글자수정·전개는 2.6 Sunburst로 항상 처리"
-                          >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {OPENAI_MODELS.map((m) => (
-                              <SelectItem key={m.value} value={m.value}>
-                                {m.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                      {providerId === "gemini" && (
-                        <Select
-                          value={geminiModel}
-                          onValueChange={setGeminiModel}
-                        >
-                          <SelectTrigger className="h-7 w-[150px] text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {GEMINI_MODELS.map((m) => (
-                              <SelectItem key={m.value} value={m.value}>
-                                {m.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          ↩ 되돌리기
+                        </Button>
                       )}
                     </div>
-                  </div>
-                  <fieldset
-                    className="studio-control-group w-full"
-                    aria-label="이미지 비율"
-                  >
-                    <legend className="studio-control-heading mb-2">
-                      이미지 비율
-                    </legend>
-                    <div className="studio-ratio-grid">
-                      {[
-                        ["정사각", "1024x1024"],
-                        ["가로 16:9", "1536x864"],
-                        ["세로 9:16", "864x1536"],
-                        ["가로 3:2", "1536x1024"],
-                        ["세로 2:3", "1024x1536"],
-                        ["현수막 3:1", "2880x960"],
-                        ["A4 세로", "1760x2480"],
-                        ["A4 가로", "2480x1760"],
-                      ].map(([label, value]) => {
-                        const [w, h] = imageSize.split("x").map(Number),
-                          [pw, ph] = value.split("x").map(Number);
-                        return (
+                    <div className="studio-control-group">
+                      <span className="studio-control-heading">생성 모델</span>
+                      <div className="studio-control-row">
+                        <Select
+                          value={providerId}
+                          onValueChange={(v) => setProviderId(v as ProviderId)}
+                        >
+                          <SelectTrigger className="h-7 w-[104px] text-xs">
+                            <SelectValue placeholder="OpenAI" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {providerList.map((p) => (
+                              <SelectItem key={p.id} value={p.id}>
+                                <span className="flex items-center gap-1.5">
+                                  <span
+                                    className={
+                                      p.configured
+                                        ? "text-green-600"
+                                        : "text-muted-foreground"
+                                    }
+                                  >
+                                    ●
+                                  </span>
+                                  {p.label.split(" (")[0]}
+                                </span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {providerId === "openai" && (
+                          <Select
+                            value={openaiModel}
+                            onValueChange={setOpenaiModel}
+                          >
+                            <SelectTrigger
+                              className="h-7 w-[150px] text-xs"
+                              title="생성 모델. 부분수정·글자수정·전개는 2.6 Sunburst로 항상 처리"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {OPENAI_MODELS.map((m) => (
+                                <SelectItem key={m.value} value={m.value}>
+                                  {m.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                        {providerId === "gemini" && (
+                          <Select
+                            value={geminiModel}
+                            onValueChange={setGeminiModel}
+                          >
+                            <SelectTrigger className="h-7 w-[150px] text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {GEMINI_MODELS.map((m) => (
+                                <SelectItem key={m.value} value={m.value}>
+                                  {m.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                    </div>
+                    <fieldset
+                      className="studio-control-group w-full"
+                      aria-label="이미지 비율"
+                    >
+                      <legend className="studio-control-heading mb-2">
+                        이미지 비율
+                      </legend>
+                      <div className="studio-ratio-grid">
+                        {[
+                          ["정사각", "1024x1024"],
+                          ["가로 16:9", "1536x864"],
+                          ["세로 9:16", "864x1536"],
+                          ["가로 3:2", "1536x1024"],
+                          ["세로 2:3", "1024x1536"],
+                          ["현수막 3:1", "2880x960"],
+                          ["A4 세로", "1760x2480"],
+                          ["A4 가로", "2480x1760"],
+                        ].map(([label, value]) => {
+                          const [w, h] = imageSize.split("x").map(Number),
+                            [pw, ph] = value.split("x").map(Number);
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              className="rounded border px-2 py-1 text-xs aria-pressed:bg-primary aria-pressed:text-primary-foreground"
+                              aria-pressed={Math.abs(w / h - pw / ph) < 0.02}
+                              onClick={() => setImageSize(value)}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </fieldset>
+                    <details className="studio-control-group w-full">
+                      <summary className="cursor-pointer text-xs py-2">
+                        세부 설정 · 해상도
+                      </summary>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        현재 {imageSize.replace("x", " × ")}px · 비율을 유지하며
+                        크기를 바꿔요.
+                      </p>
+                      <div className="flex gap-2">
+                        {[
+                          ["기본", 1_327_104],
+                          ["고해상도", 4_000_000],
+                        ].map(([label, pixels]) => (
                           <button
-                            key={value}
+                            key={label}
                             type="button"
-                            className="rounded border px-2 py-1 text-xs aria-pressed:bg-primary aria-pressed:text-primary-foreground"
-                            aria-pressed={Math.abs(w / h - pw / ph) < 0.02}
-                            onClick={() => setImageSize(value)}
+                            className="rounded border px-2 py-1 text-xs"
+                            onClick={() => {
+                              const [w, h] = imageSize.split("x").map(Number);
+                              const scale = Math.sqrt(Number(pixels) / (w * h));
+                              const result = normalizeSize(
+                                w * scale,
+                                h * scale,
+                              );
+                              if ("value" in result) setImageSize(result.value);
+                            }}
                           >
                             {label}
                           </button>
-                        );
-                      })}
-                    </div>
-                  </fieldset>
-                  <details className="studio-control-group w-full">
-                    <summary className="cursor-pointer text-xs py-2">
-                      세부 설정 · 해상도
-                    </summary>
-                    <p className="text-xs text-muted-foreground mb-2">
-                      현재 {imageSize.replace("x", " × ")}px · 비율을 유지하며
-                      크기를 바꿔요.
-                    </p>
-                    <div className="flex gap-2">
-                      {[
-                        ["기본", 1_327_104],
-                        ["고해상도", 4_000_000],
-                      ].map(([label, pixels]) => (
+                        ))}
                         <button
-                          key={label}
                           type="button"
                           className="rounded border px-2 py-1 text-xs"
-                          onClick={() => {
-                            const [w, h] = imageSize.split("x").map(Number);
-                            const scale = Math.sqrt(Number(pixels) / (w * h));
-                            const result = normalizeSize(w * scale, h * scale);
-                            if ("value" in result) setImageSize(result.value);
-                          }}
+                          onClick={() => setCustomSizeOpen(true)}
                         >
-                          {label}
+                          직접 입력…
                         </button>
-                      ))}
-                      <button
-                        type="button"
-                        className="rounded border px-2 py-1 text-xs"
-                        onClick={() => setCustomSizeOpen(true)}
-                      >
-                        직접 입력…
-                      </button>
-                    </div>
-                  </details>
-                  {providerId === "openai" && (
-                    <label className="studio-variants studio-control-group">
-                      시안 수
-                      <select
-                        aria-label="시안 수"
-                        value={variantCount}
-                        onChange={(e) =>
-                          setVariantCount(Number(e.target.value))
-                        }
-                      >
-                        <option value={1}>1장</option>
-                        <option value={2}>2장 비교</option>
-                        <option value={3}>3장 비교</option>
-                        <option value={4}>4장 비교</option>
-                      </select>
-                      {variantCount > 1 && (
-                        <small>장수에 따라 비용이 늘어요</small>
-                      )}
-                      {promptImageCount &&
-                        promptImageCount !== variantCount && (
-                          <small>
-                            입력 문구대로 실제 {promptImageCount}장을 생성해요
-                          </small>
-                        )}
-                    </label>
-                  )}
-                  <div className="studio-control-group">
-                    <span className="studio-control-heading">품질과 배경</span>
-                    <div className="studio-control-row">
-                      <Select
-                        value={imageQuality}
-                        onValueChange={setImageQuality}
-                      >
-                        <SelectTrigger className="w-[130px] text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="high">고품질</SelectItem>
-                          <SelectItem value="medium">중간</SelectItem>
-                          <SelectItem value="low">저품질</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        variant={transparentBg ? "secondary" : "ghost"}
-                        size="sm"
-                        className={cn(
-                          "text-xs",
-                          transparentBg &&
-                            "ring-1 ring-blue-400/60 text-blue-600 dark:text-blue-400",
-                        )}
-                        disabled={!provider.caps.transparent}
-                        onClick={() => setTransparentBg((v) => !v)}
-                        title={
-                          provider.caps.transparent
-                            ? "배경 없이 요소만 그린 PNG로 생성 (로고·캐릭터·오려 쓸 요소용)"
-                            : `${provider.label}는 투명 배경을 지원하지 않습니다`
-                        }
-                      >
-                        {transparentBg ? "☑ 투명 배경" : "☐ 투명 배경"}
-                      </Button>
+                      </div>
+                    </details>
+                    {providerId === "openai" && (
+                      <div className="studio-control-group">
+                        <label className="studio-variants">
+                          시안 수
+                          <select
+                            aria-label="시안 수"
+                            value={variantCount}
+                            onChange={(e) =>
+                              setVariantCount(Number(e.target.value))
+                            }
+                          >
+                            <option value={1}>1장</option>
+                            <option value={2}>2장 비교</option>
+                            <option value={3}>3장 비교</option>
+                            <option value={4}>4장 비교</option>
+                          </select>
+                        </label>
+                        <label className="studio-variants">
+                          포스터 구도
+                          <select
+                            aria-label="포스터 구도"
+                            value={posterLayout}
+                            onChange={(e) => setPosterLayout(e.target.value)}
+                          >
+                            <option value="auto">
+                              자동 · 비교 시 서로 다른 구도
+                            </option>
+                            {POSTER_LAYOUTS.map((layout) => (
+                              <option key={layout.id} value={layout.id}>
+                                {layout.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <small>
+                          4장 비교는 각기 다른 구도로 생성해요. 장수에 따라
+                          비용이 늘어요. 구도 원칙:{" "}
+                          <a
+                            href="https://github.com/worlyung/korean-layout-compositions"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline"
+                          >
+                            worlyung/korean-layout-compositions
+                          </a>
+                          {" · "}
+                          <a
+                            href="https://github.com/worlyung/korean-layout-compositions/blob/main/LICENSE"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline"
+                          >
+                            CC BY 4.0
+                          </a>
+                          {" (구도 지침 재구성)"}
+                        </small>
+                        {promptImageCount &&
+                          promptImageCount !== variantCount && (
+                            <small>
+                              입력 문구대로 실제 {promptImageCount}장을 생성해요
+                            </small>
+                          )}
+                      </div>
+                    )}
+                    <div className="studio-control-group">
+                      <span className="studio-control-heading">
+                        품질과 배경
+                      </span>
+                      <div className="studio-control-row">
+                        <Select
+                          value={imageQuality}
+                          onValueChange={setImageQuality}
+                        >
+                          <SelectTrigger className="w-[130px] text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="high">고품질</SelectItem>
+                            <SelectItem value="medium">중간</SelectItem>
+                            <SelectItem value="low">저품질</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          variant={transparentBg ? "secondary" : "ghost"}
+                          size="sm"
+                          className={cn(
+                            "text-xs",
+                            transparentBg &&
+                              "ring-1 ring-blue-400/60 text-blue-600 dark:text-blue-400",
+                          )}
+                          disabled={!provider.caps.transparent}
+                          onClick={() => setTransparentBg((v) => !v)}
+                          title={
+                            provider.caps.transparent
+                              ? "배경 없이 요소만 그린 PNG로 생성 (로고·캐릭터·오려 쓸 요소용)"
+                              : `${provider.label}는 투명 배경을 지원하지 않습니다`
+                          }
+                        >
+                          {transparentBg ? "☑ 투명 배경" : "☐ 투명 배경"}
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Style dropdown and Run button */}
-                <div className="studio-composer-actions flex items-center justify-between gap-2">
-                  {/* Style selector button */}
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="flex h-8 min-w-0 shrink items-center gap-1.5"
-                    onClick={() => setIsStyleDialogOpen(true)}
-                  >
-                    {(() => {
-                      if (generationSettings.styleId === "custom") {
+                  {/* Style dropdown and Run button */}
+                  <div className="studio-composer-actions flex items-center justify-between gap-2">
+                    {/* Style selector button */}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="flex h-8 min-w-0 shrink items-center gap-1.5"
+                      onClick={() => setIsStyleDialogOpen(true)}
+                    >
+                      {(() => {
+                        if (generationSettings.styleId === "custom") {
+                          return (
+                            <>
+                              <div className="w-4 h-4 flex items-center justify-center">
+                                <Plus className="w-3.5 h-3.5" />
+                              </div>
+                              <span className="truncate text-xs">
+                                스타일 선택
+                              </span>
+                            </>
+                          );
+                        }
+                        const selectedModel =
+                          styleModels.find(
+                            (m) => m.id === generationSettings.styleId,
+                          ) || styleModels.find((m) => m.id === "simpsons");
                         return (
                           <>
-                            <div className="w-4 h-4 flex items-center justify-center">
-                              <Plus className="w-3.5 h-3.5" />
-                            </div>
+                            <img
+                              src={selectedModel?.imageSrc}
+                              alt={selectedModel?.name}
+                              className="w-4 h-4 rounded-md object-cover"
+                            />
                             <span className="truncate text-xs">
-                              스타일 선택
+                              {selectedModel?.name || "스타일 선택"}
                             </span>
                           </>
                         );
-                      }
-                      const selectedModel =
-                        styleModels.find(
-                          (m) => m.id === generationSettings.styleId,
-                        ) || styleModels.find((m) => m.id === "simpsons");
-                      return (
-                        <>
-                          <img
-                            src={selectedModel?.imageSrc}
-                            alt={selectedModel?.name}
-                            className="w-4 h-4 rounded-md object-cover"
-                          />
-                          <span className="truncate text-xs">
-                            {selectedModel?.name || "스타일 선택"}
-                          </span>
-                        </>
-                      );
-                    })()}
-                    <ChevronDown className="h-4 w-4" />
-                  </Button>
-                  <div className="flex items-center gap-2">
-                    {/* Attachment button */}
-                    <TooltipProvider>
-                      <Tooltip delayDuration={0}>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="border-none"
-                            onClick={() => {
-                              // Create file input with better mobile support
-                              const input = document.createElement("input");
-                              input.type = "file";
-                              input.accept = "image/*,.md,.txt,.pdf";
-                              input.multiple = true;
+                      })()}
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+                    <div className="flex items-center gap-2">
+                      {/* Attachment button */}
+                      <TooltipProvider>
+                        <Tooltip delayDuration={0}>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="border-none"
+                              onClick={() => {
+                                // Create file input with better mobile support
+                                const input = document.createElement("input");
+                                input.type = "file";
+                                input.accept = "image/*,.md,.txt,.pdf";
+                                input.multiple = true;
 
-                              // Add to DOM for mobile compatibility
-                              input.style.position = "fixed";
-                              input.style.top = "-1000px";
-                              input.style.left = "-1000px";
-                              input.style.opacity = "0";
-                              input.style.pointerEvents = "none";
-                              input.style.width = "1px";
-                              input.style.height = "1px";
+                                // Add to DOM for mobile compatibility
+                                input.style.position = "fixed";
+                                input.style.top = "-1000px";
+                                input.style.left = "-1000px";
+                                input.style.opacity = "0";
+                                input.style.pointerEvents = "none";
+                                input.style.width = "1px";
+                                input.style.height = "1px";
 
-                              // Add event handlers
-                              input.onchange = (e) => {
-                                try {
-                                  handleFileUpload(
-                                    (e.target as HTMLInputElement).files,
-                                  );
-                                } catch (error) {
-                                  console.error("File upload error:", error);
-                                  toast({
-                                    title: "Upload failed",
-                                    description:
-                                      "Failed to process selected files",
-                                    variant: "destructive",
-                                  });
-                                } finally {
-                                  // Clean up
+                                // Add event handlers
+                                input.onchange = (e) => {
+                                  try {
+                                    handleFileUpload(
+                                      (e.target as HTMLInputElement).files,
+                                    );
+                                  } catch (error) {
+                                    console.error("File upload error:", error);
+                                    toast({
+                                      title: "Upload failed",
+                                      description:
+                                        "Failed to process selected files",
+                                      variant: "destructive",
+                                    });
+                                  } finally {
+                                    // Clean up
+                                    if (input.parentNode) {
+                                      document.body.removeChild(input);
+                                    }
+                                  }
+                                };
+
+                                input.onerror = () => {
+                                  console.error("File input error");
                                   if (input.parentNode) {
                                     document.body.removeChild(input);
                                   }
-                                }
-                              };
+                                };
 
-                              input.onerror = () => {
-                                console.error("File input error");
-                                if (input.parentNode) {
-                                  document.body.removeChild(input);
-                                }
-                              };
+                                // Add to DOM and trigger
+                                document.body.appendChild(input);
 
-                              // Add to DOM and trigger
-                              document.body.appendChild(input);
+                                // Use setTimeout to ensure the input is properly attached
+                                setTimeout(() => {
+                                  try {
+                                    input.click();
+                                  } catch (error) {
+                                    console.error(
+                                      "Failed to trigger file dialog:",
+                                      error,
+                                    );
+                                    toast({
+                                      title: "Upload unavailable",
+                                      description:
+                                        "File upload is not available. Try using drag & drop instead.",
+                                      variant: "destructive",
+                                    });
+                                    if (input.parentNode) {
+                                      document.body.removeChild(input);
+                                    }
+                                  }
+                                }, 10);
 
-                              // Use setTimeout to ensure the input is properly attached
-                              setTimeout(() => {
-                                try {
-                                  input.click();
-                                } catch (error) {
-                                  console.error(
-                                    "Failed to trigger file dialog:",
-                                    error,
-                                  );
-                                  toast({
-                                    title: "Upload unavailable",
-                                    description:
-                                      "File upload is not available. Try using drag & drop instead.",
-                                    variant: "destructive",
-                                  });
+                                // Cleanup after timeout in case dialog was cancelled
+                                setTimeout(() => {
                                   if (input.parentNode) {
                                     document.body.removeChild(input);
                                   }
-                                }
-                              }, 10);
+                                }, 30000); // 30 second cleanup
+                              }}
+                              title="이미지·제안서 업로드"
+                            >
+                              <Paperclip className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <span>업로드 (이미지·md·PDF)</span>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
 
-                              // Cleanup after timeout in case dialog was cancelled
-                              setTimeout(() => {
-                                if (input.parentNode) {
-                                  document.body.removeChild(input);
-                                }
-                              }, 30000); // 30 second cleanup
-                            }}
-                            title="이미지·제안서 업로드"
-                          >
-                            <Paperclip className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <span>업로드 (이미지·md·PDF)</span>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-
-                    {/* Run button */}
-                    <TooltipProvider>
-                      <Tooltip delayDuration={0}>
-                        <TooltipTrigger asChild>
-                          <Button
-                            onClick={handleRun}
-                            variant="primary"
-                            size="sm"
-                            disabled={
-                              isGenerating || !generationSettings.prompt.trim()
-                            }
-                            className={cn(
-                              "studio-generate gap-2 font-medium transition-all",
-                              isGenerating && "bg-secondary",
-                            )}
-                          >
-                            {isGenerating ? (
-                              <SpinnerIcon className="h-4 w-4 animate-spin text-white" />
-                            ) : (
-                              <PlayIcon className="h-4 w-4 text-white fill-white" />
-                            )}
-                            {isGenerating ? "만드는 중…" : "이미지 생성"}
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <div className="flex items-center gap-2">
-                            <span>실행</span>
-                            <ShortcutBadge
-                              variant="default"
-                              size="xs"
-                              shortcut={
-                                checkOS("Win") || checkOS("Linux")
-                                  ? "ctrl+enter"
-                                  : "meta+enter"
+                      {/* Run button */}
+                      <TooltipProvider>
+                        <Tooltip delayDuration={0}>
+                          <TooltipTrigger asChild>
+                            <Button
+                              onClick={handleRun}
+                              variant="primary"
+                              size="sm"
+                              disabled={
+                                isGenerating ||
+                                !generationSettings.prompt.trim()
                               }
-                            />
-                          </div>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                              className={cn(
+                                "studio-generate gap-2 font-medium transition-all",
+                                isGenerating && "bg-secondary",
+                              )}
+                            >
+                              {isGenerating ? (
+                                <SpinnerIcon className="h-4 w-4 animate-spin text-white" />
+                              ) : (
+                                <PlayIcon className="h-4 w-4 text-white fill-white" />
+                              )}
+                              {isGenerating ? "만드는 중…" : "이미지 생성"}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <div className="flex items-center gap-2">
+                              <span>실행</span>
+                              <ShortcutBadge
+                                variant="default"
+                                size="xs"
+                                shortcut={
+                                  checkOS("Win") || checkOS("Linux")
+                                    ? "ctrl+enter"
+                                    : "meta+enter"
+                                }
+                              />
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-
           {/* Mini-map */}
           {showMinimap && (
             <MiniMap
@@ -5896,6 +6009,7 @@ export default function OverlayPage() {
             }}
           />
           {!turdam &&
+            !layerPosterMode &&
             selectedIds.length === 1 &&
             images.some(
               (i) =>
@@ -5904,6 +6018,20 @@ export default function OverlayPage() {
               <div className="studio-properties">
                 <h2>선택한 이미지</h2>
                 <p>이 이미지로 새 시안을 만들거나 편집하세요.</p>
+                {getPosterLayout(
+                  images.find((image) => image.id === selectedIds[0])
+                    ?.generation?.compositionId,
+                ) && (
+                  <p>
+                    구도:{" "}
+                    {
+                      getPosterLayout(
+                        images.find((image) => image.id === selectedIds[0])
+                          ?.generation?.compositionId,
+                      )?.name
+                    }
+                  </p>
+                )}
                 {images.find((image) => image.id === selectedIds[0])?.generation
                   ?.prompt && (
                   <div className="studio-properties-section">
@@ -6232,10 +6360,24 @@ export default function OverlayPage() {
                     alt="선택한 원본 시안"
                     className="h-28 w-20 shrink-0 rounded object-contain"
                   />
-                  <p className="max-h-28 overflow-y-auto text-xs text-muted-foreground">
-                    {variationSource.generation?.brief ||
-                      variationSource.generation?.prompt}
-                  </p>
+                  <div className="max-h-28 overflow-y-auto text-xs text-muted-foreground">
+                    {getPosterLayout(
+                      variationSource.generation?.compositionId,
+                    ) && (
+                      <p className="mb-1 font-medium text-foreground">
+                        구도:{" "}
+                        {
+                          getPosterLayout(
+                            variationSource.generation?.compositionId,
+                          )?.name
+                        }
+                      </p>
+                    )}
+                    <p>
+                      {variationSource.generation?.brief ||
+                        variationSource.generation?.prompt}
+                    </p>
+                  </div>
                 </div>
               )}
               <div className="space-y-2">
@@ -6274,6 +6416,32 @@ export default function OverlayPage() {
                   <span>현재 구성을 유지 · 가까운 변형 만들기</span>
                 </label>
               </fieldset>
+              {getPosterLayout(variationSource?.generation?.compositionId) && (
+                <fieldset
+                  className="space-y-2 text-sm"
+                  disabled={variationBusy}
+                >
+                  <legend className="mb-2 font-medium">구도</legend>
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="radio"
+                      name="variation-layout"
+                      checked={variationLayout === "same"}
+                      onChange={() => setVariationLayout("same")}
+                    />
+                    <span>선택한 구도로 4장 변형</span>
+                  </label>
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="radio"
+                      name="variation-layout"
+                      checked={variationLayout === "different"}
+                      onChange={() => setVariationLayout("different")}
+                    />
+                    <span>서로 다른 4가지 구도로 다시 비교</span>
+                  </label>
+                </fieldset>
+              )}
               {variationError && (
                 <p role="alert" className="text-sm text-destructive">
                   {variationError}

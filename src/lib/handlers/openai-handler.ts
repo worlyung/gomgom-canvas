@@ -12,6 +12,7 @@ import {
   stableBriefFromPrompt,
 } from "@/lib/compare-prompts";
 import type { PlacedImage } from "@/types/canvas";
+import { getPosterLayout, posterLayoutForIndex } from "@/lib/poster-layouts";
 import { ToastAction, type ToastActionElement } from "@/components/ui/toast";
 
 // 프롬프트 앞부분으로 파일명용 요약 만들기 (예: "가을-밤-국악과-만나다")
@@ -36,6 +37,7 @@ function retryAction(fn: () => void): ToastActionElement {
 
 interface RunDeps {
   n?: number;
+  composition?: "auto" | number;
   placement?: "new-row";
   variationFeedback?: string;
   inheritReferencePrompt?: boolean;
@@ -843,6 +845,19 @@ export async function runOpenAIGeneration(deps: RunDeps) {
         ? `${effectivePrompt}\n\n참조 이미지는 색감·필치·여백의 느낌만 참고하라. 참조 이미지의 글자·숫자·고유명사·로고·제품·인물 자세·구도는 옮기지 마라. 최종 글자는 현재 작업 정보에서만 가져와라.`
         : effectivePrompt;
     const outputs: { src: string; model?: string }[] = [];
+    const compositionIds = Array.from({ length: count }, (_, index) => {
+      if (typeof deps.composition === "number")
+        return getPosterLayout(deps.composition)?.id;
+      if (
+        deps.composition === "auto" &&
+        count > 1 &&
+        (/포스터/.test(effectivePrompt) ||
+          (isFollowup &&
+            images.some((image) => image.generation?.compositionId)))
+      )
+        return posterLayoutForIndex(index).id;
+      return undefined;
+    });
     let requestError: unknown;
     for (let index = 0; index < count; index++) {
       try {
@@ -853,13 +868,19 @@ export async function runOpenAIGeneration(deps: RunDeps) {
             prompt:
               count > 1
                 ? [
-                    comparisonPrompt(generationPrompt, index),
+                    comparisonPrompt(
+                      generationPrompt,
+                      index,
+                      compositionIds[index],
+                    ),
                     deps.variationFeedback &&
                       `시안 방향과 충돌하면 사용자의 변경 요청을 우선하라: ${deps.variationFeedback}`,
                   ]
                     .filter(Boolean)
                     .join("\n\n")
-                : generationPrompt,
+                : compositionIds[index]
+                  ? `${generationPrompt}\n\n구도 ${compositionIds[index]} · ${getPosterLayout(compositionIds[index])?.name}: ${getPosterLayout(compositionIds[index])?.instruction}`
+                  : generationPrompt,
             size,
             quality,
             n: 1,
@@ -930,6 +951,7 @@ export async function runOpenAIGeneration(deps: RunDeps) {
         generation: {
           prompt: effectivePrompt,
           brief,
+          compositionId: compositionIds[index],
           provider: deps.provider || "openai",
           model:
             outputs[index].model ||

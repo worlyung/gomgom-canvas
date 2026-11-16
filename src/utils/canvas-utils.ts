@@ -21,6 +21,7 @@ export const imageToCanvasElement = (image: PlacedImage): CanvasElement => ({
   hidden: image.hidden,
   locked: image.locked,
   generation: image.generation,
+  opacity: image.opacity,
   ...(image.promptHint && { promptHint: image.promptHint }),
   transform: {
     x: image.x,

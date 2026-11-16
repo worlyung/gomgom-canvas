@@ -71,6 +71,7 @@ export const CanvasImage: React.FC<CanvasImageProps> = ({
         width={image.width}
         height={image.height}
         rotation={image.rotation}
+        opacity={image.opacity ?? 1}
         crop={
           image.cropX !== undefined && !isCroppingImage
             ? {
@@ -175,7 +176,6 @@ export const CanvasImage: React.FC<CanvasImageProps> = ({
           }
           onDragEnd();
         }}
-        opacity={image.isGenerated ? 0.9 : 1}
         stroke={isSelected ? "#3b82f6" : isHovered ? "#3b82f6" : "transparent"}
         strokeWidth={isSelected || isHovered ? 2 : 0}
       />

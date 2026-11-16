@@ -2,6 +2,8 @@ export interface PlacedImage {
   generation?: {
     prompt: string;
     brief?: string;
+    compositionId?: number;
+    layerPoster?: import("@/lib/layer-poster").PosterContext;
     provider: string;
     model: string;
     size: string;
@@ -17,6 +19,7 @@ export interface PlacedImage {
   height: number;
   rotation: number;
   isGenerated?: boolean;
+  opacity?: number;
   parentGroupId?: string;
   promptHint?: string; // 생성 프롬프트 요약 — 다운로드 파일명용
   cropX?: number;
