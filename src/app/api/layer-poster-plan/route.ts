@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getKey } from "@/lib/server-keys";
-import { posterPlanSchema } from "@/lib/layer-poster";
+import { parsePosterPlan, posterPlanResponseFormat } from "@/lib/layer-poster";
 
 export const maxDuration = 120;
 export async function POST(req: NextRequest) {
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: "gpt-5-mini",
-        response_format: { type: "json_object" },
+        response_format: posterPlanResponseFormat,
         messages: [
           {
             role: "system",
@@ -44,13 +44,16 @@ export async function POST(req: NextRequest) {
     });
     if (!response.ok) throw new Error(`기획 요청 실패 (${response.status})`);
     const data = await response.json();
-    const plan = posterPlanSchema.parse(
-      JSON.parse(data.choices[0].message.content),
-    );
+    const content = data.choices?.[0]?.message?.content;
+    if (typeof content !== "string") throw new Error("기획 응답 없음");
+    const plan = parsePosterPlan(JSON.parse(content));
     return NextResponse.json(plan);
-  } catch (error) {
+  } catch {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "기획 실패" },
+      {
+        error:
+          "기획 결과를 완성하지 못했어요. 잠시 후 ‘기획·구도 만들기’를 다시 눌러주세요.",
+      },
       { status: 502 },
     );
   }
