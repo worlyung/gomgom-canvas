@@ -110,12 +110,6 @@ export function SourcePosterStudio(p: Props) {
       25,
       measure(false),
     );
-    if (!heading || !details) {
-      setStatus(
-        "이 구도에 넣기에는 문구가 너무 길어요. 문구를 줄이거나 다른 구도를 선택하세요.",
-      );
-      return;
-    }
     p.saveHistory();
     p.setShapes((prev) => [
       ...prev,
@@ -188,7 +182,9 @@ export function SourcePosterStudio(p: Props) {
     });
     p.setSelectedIds([image.id]);
     setStatus(
-      "원본 이미지와 편집 가능한 글씨로 초안을 만들었어요. 이미지와 글씨를 각각 드래그해 조정하세요.",
+      heading.needsAdjustment || details.needsAdjustment
+        ? "문구를 모두 넣어 초안을 만들었어요. 내용이 많아 일부 글씨가 배치 영역을 넘을 수 있어요. 크게 열어 글씨 위치와 크기를 자유롭게 조정하세요."
+        : "문구 길이에 맞춰 글씨 크기와 줄바꿈을 조정했어요. 크게 열어 자유롭게 편집하세요.",
     );
   }
   return (

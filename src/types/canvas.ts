@@ -44,6 +44,12 @@ export interface PlacedText {
   rotation: number;
   align?: "left" | "center" | "right";
   stroke?: string; // 테두리(밝은 배경 위 흰 글자 등)
+  strokeWidth?: number;
+  letterSpacing?: number;
+  lineHeight?: number;
+  shadowColor?: string;
+  shadowBlur?: number;
+  shadowOffset?: number;
   z?: number; // 쌓임 순서 (이미지·도형과 공유)
   hidden?: boolean;
   locked?: boolean;

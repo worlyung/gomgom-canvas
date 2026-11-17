@@ -49,7 +49,18 @@ export function CanvasText({
         fontStyle={item.bold ? "bold" : "normal"}
         align={item.align || "left"}
         stroke={item.stroke}
-        strokeWidth={item.stroke ? Math.max(1, item.fontSize / 18) : 0}
+        strokeWidth={
+          item.stroke
+            ? (item.strokeWidth ?? Math.max(1, item.fontSize / 18))
+            : 0
+        }
+        letterSpacing={item.letterSpacing ?? 0}
+        lineHeight={item.lineHeight ?? 1}
+        shadowColor={item.shadowColor}
+        shadowBlur={item.shadowBlur ?? 0}
+        shadowOffsetX={item.shadowOffset ?? 0}
+        shadowOffsetY={item.shadowOffset ?? 0}
+        shadowEnabled={!!item.shadowColor}
         fillAfterStrokeEnabled
         draggable={!item.locked}
         onMouseDown={(e: Konva.KonvaEventObject<MouseEvent>) => {

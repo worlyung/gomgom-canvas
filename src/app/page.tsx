@@ -61,6 +61,10 @@ import { CropOverlayWrapper } from "@/components/canvas/CropOverlayWrapper";
 import { CanvasImage } from "@/components/canvas/CanvasImage";
 import { CanvasText } from "@/components/canvas/CanvasText";
 import { TextToolbar, FONT_CHOICES } from "@/components/text-toolbar";
+import {
+  PosterFocusEditor,
+  type FocusDocument,
+} from "@/components/poster-focus-editor";
 import { CanvasShape } from "@/components/canvas/CanvasShape";
 import { CanvasNote, NOTE_WIDTH_NARROW } from "@/components/canvas/CanvasNote";
 import { ShapeToolbar } from "@/components/shape-note-toolbar";
@@ -413,6 +417,9 @@ export default function OverlayPage() {
     scale: 1,
   });
   const stageRef = useRef<Konva.Stage>(null);
+  const [focusDocument, setFocusDocument] = useState<FocusDocument | null>(
+    null,
+  );
   const [isolateTarget, setIsolateTarget] = useState<string | null>(null);
   const [isolateInputValue, setIsolateInputValue] = useState("");
   const [isIsolating, setIsIsolating] = useState(false);
@@ -1181,6 +1188,12 @@ export default function OverlayPage() {
             fontSize: element.fontSize || 48,
             fill: element.fill || "#111111",
             fontFamily: element.fontFamily || FONT_CHOICES[0].value,
+            letterSpacing: element.letterSpacing,
+            lineHeight: element.lineHeight,
+            strokeWidth: element.strokeWidth,
+            shadowColor: element.shadowColor,
+            shadowBlur: element.shadowBlur,
+            shadowOffset: element.shadowOffset,
             bold: element.bold,
             align: element.align,
             stroke: element.stroke,
@@ -3004,7 +3017,11 @@ export default function OverlayPage() {
       stage.batchDraw();
     };
     document.fonts.addEventListener("loadingdone", redraw);
-    return () => document.fonts.removeEventListener("loadingdone", redraw);
+    document.addEventListener("gomgom-font-loaded", redraw);
+    return () => {
+      document.fonts.removeEventListener("loadingdone", redraw);
+      document.removeEventListener("gomgom-font-loaded", redraw);
+    };
   }, []);
 
   // ── 포스터 판 (P2) ────────────────────────────────────────────────
@@ -3329,6 +3346,65 @@ export default function OverlayPage() {
     );
   };
 
+  const openPosterFocus = (image: PlacedImage) => {
+    const node = stageRef.current?.findOne(`#${image.id}`);
+    const imageBounds =
+      node?.getClientRect({ relativeTo: node.getLayer()! }) || image;
+    const center = {
+      x: imageBounds.x + imageBounds.width / 2,
+      y: imageBounds.y + imageBounds.height / 2,
+    };
+    const bounds =
+      artboard &&
+      center.x >= artboard.x &&
+      center.x <= artboard.x + artboard.width &&
+      center.y >= artboard.y &&
+      center.y <= artboard.y + artboard.height
+        ? artboard
+        : imageBounds;
+    const belongs = (item: { id: string; x: number; y: number }) => {
+      if (item.id === image.id) return true;
+      // Long editable copy may extend past the board; keep its anchored layer accessible.
+      if (
+        item.x >= bounds.x &&
+        item.x <= bounds.x + bounds.width &&
+        item.y >= bounds.y &&
+        item.y <= bounds.y + bounds.height
+      )
+        return true;
+      const n = stageRef.current?.findOne(`#${item.id}`);
+      const r = n?.getClientRect({ relativeTo: n.getLayer()! });
+      const x = r ? r.x + r.width / 2 : item.x;
+      const y = r ? r.y + r.height / 2 : item.y;
+      return (
+        x >= bounds.x &&
+        x <= bounds.x + bounds.width &&
+        y >= bounds.y &&
+        y <= bounds.y + bounds.height
+      );
+    };
+    setFocusDocument({
+      bounds: {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+      },
+      images: images.filter(belongs).map((item) => ({
+        ...item,
+        z: orderedLayers.find((e) => e.id === item.id)!.z,
+      })),
+      texts: texts.filter(belongs).map((item) => ({
+        ...item,
+        z: orderedLayers.find((e) => e.id === item.id)!.z,
+      })),
+      shapes: shapes.filter(belongs).map((item) => ({
+        ...item,
+        z: orderedLayers.find((e) => e.id === item.id)!.z,
+      })),
+    });
+  };
+
   const renderImage = (image: PlacedImage) => {
     if (!inView(image)) return null;
     return (
@@ -3346,7 +3422,7 @@ export default function OverlayPage() {
           );
         }}
         onDoubleClick={() => {
-          if (!image.locked) setCroppingImageId(image.id);
+          openPosterFocus(image);
         }}
         onDragStart={() => {
           // 여러 개 선택 중 하나를 끌면 선택 유지, 선택 안 된 걸 끌면 그것만 선택
@@ -4033,6 +4109,45 @@ export default function OverlayPage() {
       onDragEnter={(e) => e.preventDefault()}
       onDragLeave={(e) => e.preventDefault()}
     >
+      {focusDocument && (
+        <PosterFocusEditor
+          initial={focusDocument}
+          onFinish={(result) => {
+            if (result === focusDocument) {
+              setFocusDocument(null);
+              return;
+            }
+            saveToHistory();
+            const stamp = <T extends { id: string; z?: number }>(
+              item: T,
+            ): T => ({
+              ...item,
+              z: orderedLayers.find((e) => e.id === item.id)?.z ?? item.z,
+            });
+            const ids = new Set(
+              [
+                ...focusDocument.images,
+                ...focusDocument.texts,
+                ...focusDocument.shapes,
+              ].map((i) => i.id),
+            );
+            setImages((prev) => [
+              ...prev.filter((i) => !ids.has(i.id)).map(stamp),
+              ...result.images,
+            ]);
+            setTexts((prev) => [
+              ...prev.filter((i) => !ids.has(i.id)).map(stamp),
+              ...result.texts,
+            ]);
+            setShapes((prev) => [
+              ...prev.filter((i) => !ids.has(i.id)).map(stamp),
+              ...result.shapes,
+            ]);
+            setVideos((prev) => prev.map(stamp));
+            setFocusDocument(null);
+          }}
+        />
+      )}
       {turdam && (
         <div
           role="region"
@@ -6069,6 +6184,14 @@ export default function OverlayPage() {
             ) && (
               <div className="studio-properties">
                 <h2>선택한 이미지</h2>
+                <Button
+                  onClick={() => {
+                    const image = images.find((i) => i.id === selectedIds[0]);
+                    if (image) openPosterFocus(image);
+                  }}
+                >
+                  크게 열어 집중 편집
+                </Button>
                 <p>이 이미지로 새 시안을 만들거나 편집하세요.</p>
                 {getPosterLayout(
                   images.find((image) => image.id === selectedIds[0])

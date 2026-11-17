@@ -35,6 +35,11 @@ interface CanvasElement {
   fontSize?: number;
   fill?: string;
   fontFamily?: string;
+  letterSpacing?: number;
+  lineHeight?: number;
+  shadowColor?: string;
+  shadowBlur?: number;
+  shadowOffset?: number;
   bold?: boolean;
   align?: "left" | "center" | "right";
   stroke?: string;

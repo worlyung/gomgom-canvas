@@ -114,13 +114,9 @@ export function fitPosterText(
   preferred: number,
   measure: (s: string, size: number) => number,
 ) {
+  let fallback = { text, fontSize: 14, needsAdjustment: true };
   for (let size = preferred; size >= 14; size -= 2) {
-    // Prefer keeping Korean words together, especially in narrow side columns.
-    if (
-      size > 16 &&
-      text.split(/\s+/).some((word) => measure(word, size) > box.w)
-    )
-      continue;
+    // Keep words together when possible; long words may wrap without shrinking the whole title.
     const lines: string[] = [];
     for (const paragraph of text.split("\n")) {
       let line = "";
@@ -139,8 +135,14 @@ export function fitPosterText(
       }
       lines.push(line.trimEnd());
     }
+    fallback = {
+      text: lines.join("\n"),
+      fontSize: size,
+      needsAdjustment: true,
+    };
     if (lines.length * size * 1.25 <= box.h)
-      return { text: lines.join("\n"), fontSize: size };
+      return { ...fallback, needsAdjustment: false };
   }
-  return null;
+  // Preserve all copy in an editable draft, even when the chosen box is too small.
+  return fallback;
 }

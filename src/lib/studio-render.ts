@@ -1,4 +1,5 @@
 import type { StudioProject } from "./studio-project";
+import { ensureLocalFont, familyFromValue } from "./local-fonts";
 export function projectBounds(p: StudioProject) {
   if (p.artboard) return p.artboard;
   const ctx = document.createElement("canvas").getContext("2d")!;
@@ -8,10 +9,11 @@ export function projectBounds(p: StudioProject) {
       let w: number, h: number;
       if ("text" in e) {
         ctx.font = `${e.bold ? "bold " : ""}${e.fontSize}px ${e.fontFamily}`;
+        ctx.letterSpacing = `${e.letterSpacing ?? 0}px`;
         w = Math.max(
           ...e.text.split("\n").map((s) => ctx.measureText(s).width),
         );
-        h = e.fontSize * 1.2 * e.text.split("\n").length;
+        h = e.fontSize * (e.lineHeight ?? 1) * e.text.split("\n").length;
       } else {
         w = e.width;
         h = e.height;
@@ -119,6 +121,13 @@ export async function renderFormat(
 ) {
   if (p.videos.length)
     throw new Error("영상은 정지 이미지 일괄 출력에서 제외해 주세요");
+  await Promise.all(
+    p.texts.map((t) => {
+      const f = familyFromValue(t.fontFamily);
+      return f ? ensureLocalFont(f) : Promise.resolve(false);
+    }),
+  );
+  await document.fonts.ready;
   if (event)
     p = {
       ...p,
@@ -169,6 +178,12 @@ export async function renderFormat(
     } else if ("text" in e) {
       ctx.fillStyle = e.fill;
       ctx.font = `${e.bold ? "bold " : ""}${e.fontSize}px ${e.fontFamily}`;
+      ctx.letterSpacing = `${e.letterSpacing ?? 0}px`;
+      if (e.shadowColor) {
+        ctx.shadowColor = e.shadowColor;
+        ctx.shadowBlur = e.shadowBlur ?? 0;
+        ctx.shadowOffsetX = ctx.shadowOffsetY = e.shadowOffset ?? 0;
+      }
       ctx.textBaseline = "top";
       const text =
         event && p.extras.links[e.id]
@@ -185,10 +200,10 @@ export async function renderFormat(
               : 0;
         if (e.stroke) {
           ctx.strokeStyle = e.stroke;
-          ctx.lineWidth = 2;
-          ctx.strokeText(line, offset, n * e.fontSize * 1.2);
+          ctx.lineWidth = e.strokeWidth ?? Math.max(1, e.fontSize / 18);
+          ctx.strokeText(line, offset, n * e.fontSize * (e.lineHeight ?? 1));
         }
-        ctx.fillText(line, offset, n * e.fontSize * 1.2);
+        ctx.fillText(line, offset, n * e.fontSize * (e.lineHeight ?? 1));
       });
     } else {
       ctx.globalAlpha = e.opacity;
