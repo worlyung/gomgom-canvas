@@ -76,6 +76,11 @@
 .canvas-workspace { --studio-sidebar-width:348px; }
 @media(min-width:1440px) { .canvas-workspace { --studio-sidebar-width:420px; } }
 .studio-composer { width:var(--studio-sidebar-width); }
+.studio-composer .studio-nav { gap:4px; padding:10px 8px; }
+.studio-composer .studio-nav button { border-radius:6px; min-height:34px; padding:7px 5px; }
+.studio-composer .studio-nav button[aria-current="page"] { box-shadow:inset 3px 0 #9cc59e; font-weight:650; }
+.studio-composer .studio-section-title { padding:15px 10px 9px; }
+.studio-composer :is(button,summary):focus-visible { outline:2px solid #6e997c; outline-offset:2px; }
 .studio-palette { left:calc(var(--studio-sidebar-width) + 20px); }
 .studio-welcome { left:calc(var(--studio-sidebar-width) + 24px); }
 .studio-zoom-controls { left:calc(var(--studio-sidebar-width) + 20px); }

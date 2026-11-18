@@ -1,7 +1,10 @@
 .dialog { width: 96vw!important; max-width: 1550px!important; height: 94dvh; padding: 0!important; gap: 0!important; overflow: hidden; border-radius: 18px; background: #f5f5ef; color: #203c34; }
 .studio { display: flex; flex-direction: column; min-height: 0; height: 100%; font-size: 13px; }
 .header { padding: 20px 48px 18px 24px; border-bottom: 1px solid #d8ded5; display: flex; justify-content: space-between; gap: 20px; align-items: center; }
-.title { font-size: 21px; margin-bottom: 5px; font-weight: 700; }
+.title { font-size: 22px; margin-bottom: 5px; font-weight: 700; letter-spacing:-.035em; }
+.studio .header { background:#203b31; color:#fff; }
+.studio .header p { color:#d1dfd4; }
+.dialog .header button { background:#f5f8f2; color:#234432; }
 .actions, .row { display: flex; gap: 8px; align-items: center; }
 .studio button { border: 1px solid #c9d2c6; border-radius: 8px; padding: 8px 10px; background: #fff; color: #203c34; cursor: pointer; font-size: 12px; }
 .studio button:hover { background: #e7eddd; }
