@@ -2,16 +2,13 @@
 // 텍스트 추출 후 OpenAI 텍스트 모델로 요약·프롬프트화 (키는 서버 전용, generate/route.ts와 동일)
 import { NextRequest, NextResponse } from "next/server";
 import { getKey } from "@/lib/server-keys";
+import { planningModel } from "@/lib/planning-model";
 
 export const maxDuration = 120;
 
 function getOpenAIKey(): string | undefined {
   return getKey("OPENAI_API_KEY_COMPANY");
 }
-
-// 모델명은 시점에 따라 다를 수 있어 후보를 순서대로 시도, 성공한 것 캐시
-const MODEL_CANDIDATES = ["gpt-5-mini", "gpt-5", "gpt-4.1-mini", "gpt-4o-mini"];
-let workingModel: string | undefined;
 
 const SYSTEM = `너는 한국 공공 행사 포스터의 아트디렉터다. 사용자가 준 문서(제안서·기획서)에서 핵심을 뽑아, 이미지 생성 AI(gpt-image-2)용 포스터 생성 프롬프트를 "한국어 한 문단"으로 작성한다.
 반드시 포함: ①행사명(이미지 안에 큰 글자로 넣으라고 지시) ②일시·장소가 문서에 있으면 작은 글자로 포함 지시 ③행사 성격에 맞는 분위기·색감·비주얼 소재 ④"포스터, 세로 구도, 인쇄 품질" 지시.
@@ -65,40 +62,32 @@ export async function POST(req: NextRequest) {
   }
   const clipped = text.slice(0, 15000); // ponytail: 15k자 컷 — 초장문 제안서는 앞부분(개요·과업)이 핵심
 
-  const models = workingModel ? [workingModel] : MODEL_CANDIDATES;
-  let lastErr = "";
-  for (const model of models) {
-    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: SYSTEM },
-          {
-            role: "user",
-            content: `문서 파일명: ${file.name}\n\n--- 문서 내용 ---\n${clipped}`,
-          },
-        ],
-      }),
-    });
-    if (resp.ok) {
-      workingModel = model;
-      const j = await resp.json();
-      const prompt = j.choices?.[0]?.message?.content?.trim();
-      if (!prompt)
-        return NextResponse.json({ error: "빈 응답" }, { status: 502 });
-      return NextResponse.json({ prompt, model });
-    }
-    lastErr = `${model}: ${resp.status} ${(await resp.text()).slice(0, 150)}`;
-    if (resp.status !== 404 && resp.status !== 400) break; // 모델 없음 계열만 다음 후보 시도
+  const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      ...planningModel,
+      messages: [
+        { role: "system", content: SYSTEM },
+        {
+          role: "user",
+          content: `문서 파일명: ${file.name}\n\n--- 문서 내용 ---\n${clipped}`,
+        },
+      ],
+    }),
+  });
+  if (resp.ok) {
+    const j = await resp.json();
+    const prompt = j.choices?.[0]?.message?.content?.trim();
+    if (!prompt)
+      return NextResponse.json({ error: "빈 응답" }, { status: 502 });
+    return NextResponse.json({ prompt, model: planningModel.model });
   }
-  console.error("understand-doc 실패:", lastErr);
   return NextResponse.json(
-    { error: `텍스트 모델 호출 실패 — ${lastErr}` },
+    { error: `문서 분석 요청 실패 (${resp.status})` },
     { status: 502 },
   );
 }

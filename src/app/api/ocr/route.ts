@@ -39,7 +39,8 @@ export async function POST(req: NextRequest) {
       },
       signal: AbortSignal.timeout(110000),
       body: JSON.stringify({
-        model: "gpt-4.1-mini",
+        model: "gpt-6.2-sol",
+        reasoning_effort: "medium",
         response_format: { type: "json_object" },
         messages: [
           {

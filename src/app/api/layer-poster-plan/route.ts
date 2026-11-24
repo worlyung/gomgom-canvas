@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getKey } from "@/lib/server-keys";
+import { planningModel } from "@/lib/planning-model";
 import { parsePosterPlan, posterPlanResponseFormat } from "@/lib/layer-poster";
 
 export const maxDuration = 120;
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-5-mini",
+        ...planningModel,
         response_format: posterPlanResponseFormat,
         messages: [
           {

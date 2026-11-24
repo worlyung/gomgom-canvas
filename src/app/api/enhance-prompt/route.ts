@@ -1,15 +1,13 @@
 // 프롬프트 업그레이더 — 대충 쓴 한 줄을 이미지 모델이 잘 알아듣는 묘사로 부풀린다
 import { NextRequest, NextResponse } from "next/server";
 import { getKey } from "@/lib/server-keys";
+import { planningModel } from "@/lib/planning-model";
 
 export const maxDuration = 120;
 
 function getOpenAIKey(): string | undefined {
   return getKey("OPENAI_API_KEY_COMPANY");
 }
-
-const MODELS = ["gpt-5-mini", "gpt-5", "gpt-4.1-mini", "gpt-4o-mini"];
-let workingModel: string | undefined;
 
 const SYSTEM = `너는 이미지 생성 프롬프트 전문가다. 사용자가 대충 던진 한국어 요청을 gpt-image-2가 잘 알아듣는 구체적인 한국어 묘사로 다시 쓴다.
 
@@ -48,38 +46,31 @@ export async function POST(req: NextRequest) {
     .filter(Boolean)
     .join("\n");
 
-  const models = workingModel ? [workingModel] : MODELS;
-  let lastErr = "";
-  for (const model of models) {
-    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: SYSTEM },
-          {
-            role: "user",
-            content: `${context ? context + "\n\n" : ""}사용자 요청: ${prompt}`,
-          },
-        ],
-      }),
-    });
-    if (resp.ok) {
-      workingModel = model;
-      const j = await resp.json();
-      const out = j.choices?.[0]?.message?.content?.trim();
-      if (!out) return NextResponse.json({ error: "빈 응답" }, { status: 502 });
-      return NextResponse.json({ prompt: out });
-    }
-    lastErr = `${model}: ${resp.status}`;
-    if (resp.status !== 404 && resp.status !== 400) break;
+  const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      ...planningModel,
+      messages: [
+        { role: "system", content: SYSTEM },
+        {
+          role: "user",
+          content: `${context ? context + "\n\n" : ""}사용자 요청: ${prompt}`,
+        },
+      ],
+    }),
+  });
+  if (resp.ok) {
+    const j = await resp.json();
+    const out = j.choices?.[0]?.message?.content?.trim();
+    if (!out) return NextResponse.json({ error: "빈 응답" }, { status: 502 });
+    return NextResponse.json({ prompt: out });
   }
   return NextResponse.json(
-    { error: `다듬기 실패 — ${lastErr}` },
+    { error: `다듬기 실패 — ${planningModel.model}: ${resp.status}` },
     { status: 502 },
   );
 }
